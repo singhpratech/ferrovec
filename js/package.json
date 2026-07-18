@@ -1,6 +1,6 @@
 {
   "name": "ferrovec",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Text-in vector search: transformers.js embeddings over a wasm HNSW core, off a dedicated Web Worker, with OPFS persistence.",
   "license": "MIT",

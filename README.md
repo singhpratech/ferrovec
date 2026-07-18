@@ -25,7 +25,7 @@ The winning WebAssembly apps never asked anyone to switch languages — they put
 - ➕ **Incremental** upsert-style inserts and tombstoning removals — no rebuild-the-whole-index penalty.
 - 💾 **Portable** — compact binary (de)serialization with a versioned header; the same bytes reload natively or in the browser.
 
-> **Status — the roadmap is complete, and both registries are on `0.3.0`.** crates.io `0.3.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.3.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), and cross-tab single-writer leader election (**M6**). See the [roadmap](#roadmap).
+> **Status — the roadmap is complete, and both registries are on `0.3.1`.** crates.io `0.3.1` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.3.1` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), and cross-tab single-writer leader election (**M6**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
 
 ---
 
@@ -172,7 +172,7 @@ const restored = FerrovecCore.fromBytes(bytes);
 > The `js/` package wraps this with automatic embedding via transformers.js
 > (**M3**), OPFS persistence (**M4**), and cross-tab leader election (**M6**), so the browser API becomes:
 > `const db = await Ferrovec.open('notes'); await db.insert(text); const hits = await db.query('…', 5);`
-> — live on npm as `0.3.0`.
+> — live on npm as `0.3.1`.
 
 To smoke-test WASM compatibility without packaging:
 
@@ -192,7 +192,7 @@ cargo build --target wasm32-unknown-unknown
 | **M5** | `ferrovec` on npm — the three-line browser API | ✅ shipped (npm) |
 | **M6** | Cross-tab leader election (Web Locks) | ✅ shipped (npm) |
 
-> Both registries are published at **`0.3.0`** — crates.io (Rust core) and npm (browser package).
+> Both registries are published at **`0.3.1`** — crates.io (Rust core) and npm (browser package).
 
 ## Design notes
 

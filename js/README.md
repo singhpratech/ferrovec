@@ -6,9 +6,13 @@ embeddings over a Rust/wasm HNSW core, running on a dedicated Web Worker, with
 
 You give it text. It embeds, indexes, and searches — off the main thread.
 
-**`0.3.0`** — the three-line browser API (embeddings + OPFS persistence), now
+**`0.3.1`** — the three-line browser API (embeddings + OPFS persistence), now
 **safe across multiple tabs** via single-writer leader election.
-· [Website](https://singhpratech.github.io/ferrovec/) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
+· [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Live demo**](https://singhpratech.github.io/ferrovec/demo.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
+
+> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — the real
+> WASM core running semantic search over sentence embeddings entirely in your browser tab.
+> No server, no network: the wasm binary and the vectors are baked into a single HTML file.
 
 ## Install
 
