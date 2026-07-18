@@ -184,13 +184,13 @@ cargo build --target wasm32-unknown-unknown
 
 | | Milestone | Status |
 | --- | --- | --- |
-| **M1** | Pure-Rust HNSW core | ✅ shipped |
-| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ shipped |
-| **—** | `compact()` / `clear()` compaction | ✅ shipped (crates.io) |
-| **M3** | Web Worker + transformers.js auto-embedding | ✅ shipped (npm) |
-| **M4** | OPFS-backed persistence (survives reloads) | ✅ shipped (npm) |
-| **M5** | `ferrovec` on npm — the three-line browser API | ✅ shipped (npm) |
-| **M6** | Cross-tab leader election (Web Locks) | ✅ shipped (npm) |
+| **M1** | Pure-Rust HNSW core | ✅ `0.3.1` |
+| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ `0.3.1` |
+| **—** | `compact()` / `clear()` compaction | ✅ `0.3.1` |
+| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.1` |
+| **M4** | OPFS-backed persistence (survives reloads) | ✅ `0.3.1` |
+| **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.3.1` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.1` |
 
 > Both registries are published at **`0.3.1`** — crates.io (Rust core) and npm (browser package).
 
@@ -198,7 +198,7 @@ cargo build --target wasm32-unknown-unknown
 
 - **Why hand-rolled?** No mature Rust HNSW crate compiles cleanly to `wasm32-unknown-unknown` — they hard-depend on `rayon`, `mmap-rs`, or `num_cpus`. Owning the graph keeps the dependency tree tiny and the WASM artifact small.
 - **Determinism.** The build is reproducible from `Config::seed`; there is no `getrandom` in the dependency tree.
-- **Tombstones & compaction.** `remove` marks a node deleted and excludes it from results while keeping it for graph connectivity, so heavy churn grows memory over time. `compact` (added in `0.2.0`) rebuilds the index in place from the live vectors only — deterministically, by rewinding the PRNG to `Config::seed` — reclaiming the space held by tombstoned nodes. `clear` resets the index to empty while keeping its dimensionality and config.
+- **Tombstones & compaction.** `remove` marks a node deleted and excludes it from results while keeping it for graph connectivity, so heavy churn grows memory over time. `compact` rebuilds the index in place from the live vectors only — deterministically, by rewinding the PRNG to `Config::seed` — reclaiming the space held by tombstoned nodes. `clear` resets the index to empty while keeping its dimensionality and config.
 
 ## License
 

@@ -89,7 +89,7 @@ coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
 
 Opening the **same store name in two tabs** used to make the second tab silently
 degrade to a private in-memory copy — the two would diverge and the second tab's
-writes never reached disk. As of `0.3.0` ferrovec runs **single-writer leader
+writes never reached disk. As of `0.3.1` ferrovec runs **single-writer leader
 election** so multiple tabs safely share one persistent store:
 
 ```ts
@@ -130,7 +130,7 @@ How it works:
   so a shared store never ends up with zero leaders.
 - **Always degrade, never crash.** Where the Web Locks API or BroadcastChannel
   is unavailable (older browser, insecure context, Node), a store opens as
-  `role: 'solo'` — the sole owner, exactly as before `0.3.0`. (This best-effort
+  `role: 'solo'` — the sole owner, exactly the single-tab behaviour. (This best-effort
   in-memory fallback applies only to a solo/no-lock open, never to a lock-holding
   leader — a legitimate owner is never silently degraded over an intact index.)
 
@@ -189,11 +189,11 @@ The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 
 | | Milestone | Status |
 | --- | --- | --- |
-| **M1–M2** | Rust HNSW core + WASM boundary + SIMD | ✅ shipped |
-| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.2.0` |
-| **M4** | OPFS persistence (survives reloads) | ✅ `0.2.0` |
-| **M5** | Three-line browser API on npm | ✅ `0.2.0` |
-| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.0` |
+| **M1–M2** | Rust HNSW core + WASM boundary + SIMD | ✅ `0.3.1` |
+| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.1` |
+| **M4** | OPFS persistence (survives reloads) | ✅ `0.3.1` |
+| **M5** | Three-line browser API on npm | ✅ `0.3.1` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.1` |
 
 The pure-Rust HNSW core is published separately on [crates.io](https://crates.io/crates/ferrovec).
 
