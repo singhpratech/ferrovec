@@ -1,0 +1,53 @@
+{
+  "name": "ferrovec",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "Text-in vector search: transformers.js embeddings over a wasm HNSW core, off a dedicated Web Worker, with OPFS persistence.",
+  "license": "MIT",
+  "author": "singhpratech",
+  "homepage": "https://singhpratech.github.io/ferrovec/",
+  "keywords": [
+    "hnsw",
+    "vector-search",
+    "embeddings",
+    "ann",
+    "wasm",
+    "transformers",
+    "semantic-search"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./worker": {
+      "import": "./dist/worker.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/core"
+  ],
+  "sideEffects": [
+    "./dist/worker.js",
+    "./src/core/ferrovec.js"
+  ],
+  "scripts": {
+    "build": "tsup && rm -rf dist/core && cp -r src/core dist/core",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "test:real": "FERROVEC_REAL=1 node --test test/real.test.ts",
+    "test:browser": "node --test test/browser/opfs.test.ts"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1",
+    "tsup": "^8",
+    "typescript": "^5"
+  }
+}

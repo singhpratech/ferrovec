@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ferrovec — a persisted vector store for the browser, with a Rust engine inside</title>
+<meta name="description" content="A persisted, OPFS-backed HNSW vector store compiled Rust to WebAssembly. Private, offline, in-browser semantic search in three lines." />
+<meta property="og:title" content="ferrovec" />
+<meta property="og:description" content="Semantic memory for the browser, with a Rust engine inside. Rust→WASM HNSW, OPFS-persisted, offline-first." />
+<meta property="og:type" content="website" />
+<style>
+  :root {
+    --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #8B8478;
+    --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
+    --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4;
+    --wasm: #5B48D8; --wasm-soft: #E3DFF7;
+    --good: #2E6B3C; --good-soft: #DBE9DD;
+    --warn: #8A6410; --code-bg: #EBE7DE; --canvas-node: #C13A15; --canvas-edge: rgba(91,72,216,0.22);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+      --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+      --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15;
+      --wasm: #927FF0; --wasm-soft: #241E3E;
+      --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F;
+      --code-bg: #1E1A15; --canvas-node: #EC6236; --canvas-edge: rgba(146,127,240,0.22);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #8B8478;
+    --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
+    --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4; --wasm: #5B48D8; --wasm-soft: #E3DFF7;
+    --good: #2E6B3C; --good-soft: #DBE9DD; --warn: #8A6410; --code-bg: #EBE7DE;
+    --canvas-node: #C13A15; --canvas-edge: rgba(91,72,216,0.22);
+  }
+  :root[data-theme="dark"] {
+    --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+    --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+    --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
+    --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --code-bg: #1E1A15;
+    --canvas-node: #EC6236; --canvas-edge: rgba(146,127,240,0.22);
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation: none !important; transition: none !important; } }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    font-size: 1.05rem; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .mono, code, pre, .tag, .eyebrow, .badge { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+  code { background: var(--code-bg); padding: 0.12em 0.38em; border-radius: 3px; font-size: 0.86em; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  h1, h2, h3 { text-wrap: balance; }
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 0 1.5rem; }
+  .narrow { max-width: 46rem; }
+  .eyebrow { font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); margin: 0 0 0.6rem; }
+  .eyebrow.w { color: var(--wasm); }
+
+  .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+  #graph { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.9; }
+  .hero-veil { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(120% 80% at 70% 0%, transparent 30%, var(--paper) 78%); }
+  .hero-inner { position: relative; z-index: 2; padding: 2rem 0 4.5rem; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0 3.5rem; flex-wrap: wrap; gap: 1rem; }
+  .brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; letter-spacing: -0.02em; font-size: 1.15rem; }
+  .brand .mark { color: var(--accent); font-size: 1.3rem; line-height: 1; }
+  .nav-links { display: flex; gap: 1.4rem; flex-wrap: wrap; font-size: 0.82rem; }
+  .nav-links a { color: var(--ink-soft); text-decoration: none; letter-spacing: 0.02em; }
+  .nav-links a:hover { color: var(--accent); }
+  .live-pill { display: inline-flex; align-items: center; gap: 0.4rem; font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--good); background: var(--good-soft); padding: 0.3rem 0.6rem; border-radius: 999px; margin-bottom: 1rem; }
+  .live-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 0 var(--good); animation: pulse 2.2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(46,107,60,0.5); } 70% { box-shadow: 0 0 0 7px rgba(46,107,60,0); } 100% { box-shadow: 0 0 0 0 rgba(46,107,60,0); } }
+  .hero h1 { font-size: clamp(2.4rem, 6.5vw, 4.3rem); line-height: 1.03; letter-spacing: -0.025em; margin: 0.3rem 0 1.1rem; max-width: 20ch; }
+  .hero h1 em { font-style: italic; color: var(--accent); }
+  .lede { font-size: clamp(1.15rem, 2.4vw, 1.4rem); color: var(--ink-soft); max-width: 40rem; margin: 0 0 2rem; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: center; margin-bottom: 2.2rem; }
+  .btn { display: inline-flex; align-items: center; gap: 0.5rem; font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem; padding: 0.7rem 1.1rem; border-radius: 5px; text-decoration: none; border: 1px solid transparent; transition: transform 0.12s ease, background 0.2s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-2); }
+  .btn-ghost { border-color: var(--line); color: var(--ink); background: var(--panel); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .hero-code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 1.1rem 1.3rem; max-width: 40rem; box-shadow: 0 20px 45px -30px rgba(0,0,0,0.4); overflow-x: auto; }
+  .hero-code pre { margin: 0; font-size: 0.85rem; line-height: 1.75; }
+  .k { color: var(--accent); font-weight: 600; } .s { color: var(--good); } .f { color: var(--wasm); } .c { color: var(--ink-faint); font-style: italic; } .n { color: var(--ink); }
+  pre { overflow-x: auto; }
+
+  section.band { padding: 4.5rem 0; border-bottom: 1px solid var(--line); }
+  section.band.alt { background: var(--panel); }
+  h2 { font-size: clamp(1.7rem, 3.6vw, 2.4rem); letter-spacing: -0.015em; line-height: 1.12; margin: 0 0 1rem; }
+  .section-lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 44rem; margin: 0 0 2rem; }
+  .manifesto { font-size: clamp(1.5rem, 3.5vw, 2.2rem); line-height: 1.32; letter-spacing: -0.01em; max-width: 28ch; margin: 0; font-weight: 400; }
+  .manifesto b { color: var(--accent); font-weight: 600; }
+  .manifesto .w { color: var(--wasm); font-weight: 600; }
+  .vision-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.5rem 2rem; margin-top: 2.5rem; }
+  .vision-item .eyebrow { color: var(--ink-faint); }
+  .vision-item p { margin: 0; font-size: 0.98rem; color: var(--ink-soft); }
+  .vision-item h4 { margin: 0.1rem 0 0.4rem; font-size: 1.05rem; }
+
+  .features { display: grid; grid-template-columns: repeat(auto-fill, minmax(16.5rem, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .feat { background: var(--paper); padding: 1.4rem 1.4rem; }
+  .feat .fi { font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; color: var(--accent); letter-spacing: 0.06em; }
+  .feat h4 { margin: 0.5rem 0 0.4rem; font-size: 1.08rem; }
+  .feat p { margin: 0; font-size: 0.93rem; color: var(--ink-soft); line-height: 1.5; }
+  section.band.alt .feat { background: var(--panel); }
+
+  .stack { display: flex; flex-direction: column; gap: 0; max-width: 42rem; margin: 0 auto; }
+  .slab { border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; margin: 0.4rem 0; background: var(--paper); }
+  .slab .tag { font-family: ui-monospace, Menlo, monospace; font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+  .slab .b { font-size: 0.96rem; margin-top: 0.3rem; }
+  .slab.m { border-left: 3px solid var(--ink-faint); }
+  .slab.w { border-left: 3px solid var(--wasm); background: var(--wasm-soft); }
+  .slab.r { border-left: 3px solid var(--accent); background: var(--accent-soft); }
+  .slab.d { border-left: 3px solid var(--good); background: var(--good-soft); }
+  .flow { text-align: center; color: var(--ink-faint); font-family: ui-monospace, monospace; font-size: 0.8rem; margin: 0.15rem 0; }
+  .indent { margin-left: 1.3rem; }
+
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; min-width: 40rem; }
+  th, td { text-align: left; padding: 0.7rem 0.95rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-family: ui-monospace, Menlo, monospace; font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); background: var(--panel-2); }
+  tr:last-child td { border-bottom: none; }
+  td.name { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+  .row-us { background: var(--accent-soft); }
+  .row-us td.name { color: var(--accent); }
+  .yes { color: var(--good); font-weight: 700; } .no { color: var(--ink-faint); } .partial { color: var(--warn); }
+
+  .road { display: grid; gap: 0; }
+  .mile { display: grid; grid-template-columns: 3.2rem 1fr; gap: 0 1rem; padding: 1.1rem 0; border-top: 1px solid var(--line); align-items: start; }
+  .mile:last-child { border-bottom: 1px solid var(--line); }
+  .mile .mid { font-family: ui-monospace, Menlo, monospace; font-weight: 700; color: var(--accent); font-size: 1rem; }
+  .mile h4 { margin: 0 0 0.25rem; font-size: 1.05rem; display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; }
+  .mile p { margin: 0; font-size: 0.94rem; color: var(--ink-soft); }
+  .status { font-family: ui-monospace, Menlo, monospace; font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.14rem 0.45rem; border-radius: 3px; }
+  .status.done { background: var(--good-soft); color: var(--good); }
+  .status.now { background: var(--accent); color: #fff; }
+  .status.next { background: var(--wasm-soft); color: var(--wasm); }
+  .status.later { background: var(--panel-2); color: var(--ink-faint); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1.5rem; }
+  .stat .num { font-family: ui-monospace, Menlo, monospace; font-size: 2rem; font-weight: 600; letter-spacing: -0.02em; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .stat .lbl { font-size: 0.9rem; color: var(--ink-soft); margin-top: 0.2rem; }
+
+  .install-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 1.2rem; }
+  .install-card { border: 1px solid var(--line); border-radius: 10px; padding: 1.3rem; background: var(--paper); }
+  section.band.alt .install-card { background: var(--panel); }
+  .install-card .h { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.7rem; flex-wrap: wrap; }
+  .install-card .h .badge { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.16rem 0.45rem; border-radius: 3px; background: var(--panel-2); color: var(--ink-faint); }
+  .install-card .h .badge.live { background: var(--good-soft); color: var(--good); }
+  .install-card pre { background: var(--code-bg); border-radius: 6px; padding: 0.7rem 0.9rem; margin: 0; font-size: 0.82rem; }
+
+  footer { padding: 3rem 0 4rem; }
+  .foot-inner { display: flex; justify-content: space-between; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
+  footer .brand { margin-bottom: 0.6rem; }
+  footer p { font-size: 0.9rem; color: var(--ink-soft); max-width: 30rem; margin: 0.3rem 0; }
+  .foot-links { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.9rem; }
+  .foot-links a { color: var(--ink-soft); text-decoration: none; }
+  .foot-links a:hover { color: var(--accent); }
+  .disclaimer { margin-top: 2rem; font-size: 0.78rem; color: var(--ink-faint); border-top: 1px solid var(--line); padding-top: 1.2rem; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* Story / About */
+  .story-band { padding: 5rem 0; background: linear-gradient(180deg, var(--panel) 0%, var(--paper) 100%); border-bottom: 1px solid var(--line); }
+  .story-col { max-width: 42rem; }
+  .story-band h2 { margin: 0 0 1.6rem; }
+  .story-band p { font-size: 1.15rem; line-height: 1.72; color: var(--ink-soft); margin: 0 0 1.25rem; max-width: 40rem; }
+  .story-lead { font-size: 1.45rem !important; color: var(--ink) !important; font-weight: 500; line-height: 1.4 !important; }
+  .story-band em { color: var(--ink); font-style: italic; }
+  .story-quote { margin: 2.2rem 0; padding: 0.4rem 0 0.4rem 1.6rem; border-left: 3px solid var(--accent); font-size: 1.4rem; line-height: 1.4; color: var(--ink); font-style: italic; font-weight: 400; }
+  .story-close { color: var(--ink) !important; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <canvas id="graph" aria-hidden="true"></canvas>
+  <div class="hero-veil"></div>
+  <div class="hero-inner wrap">
+    <nav class="nav">
+      <div class="brand"><span class="mark">▲</span> ferrovec</div>
+      <div class="nav-links">
+        <a href="#vision">Vision</a>
+        <a href="#story">Story</a>
+        <a href="#what">Features</a>
+        <a href="#how">Architecture</a>
+        <a href="#compare">Compare</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/singhpratech/ferrovec">GitHub</a>
+      </div>
+    </nav>
+
+    <span class="live-pill"><span class="dot"></span> v0.2.0 live on crates.io + npm</span>
+    <h1>Semantic memory for the browser, <em>with a Rust engine inside</em></h1>
+    <p class="lede">A persisted HNSW vector store that compiles Rust to WebAssembly, auto-embeds through transformers.js, and saves to disk — so any web app gets scalable, private, offline semantic search. You never write Rust. You never run a server.</p>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://crates.io/crates/ferrovec">▲ crates.io</a>
+      <a class="btn btn-ghost" href="https://www.npmjs.com/package/ferrovec">npm →</a>
+      <a class="btn btn-ghost" href="https://docs.rs/ferrovec">docs.rs →</a>
+      <a class="btn btn-ghost" href="https://github.com/singhpratech/ferrovec">GitHub →</a>
+    </div>
+
+    <div class="hero-code">
+      <pre><span class="c">// Live in npm 0.2.0 — the three-line, batteries-included API</span>
+<span class="k">import</span> { Ferrovec } <span class="k">from</span> <span class="s">'ferrovec'</span>;
+<span class="k">const</span> db = <span class="k">await</span> Ferrovec.<span class="f">open</span>(<span class="s">'notes'</span>);          <span class="c">// worker + model + OPFS</span>
+<span class="k">await</span> db.<span class="f">insert</span>(<span class="s">'WASM handles the math, JS handles the DOM'</span>);
+<span class="k">const</span> hits = <span class="k">await</span> db.<span class="f">query</span>(<span class="s">'what owns performance?'</span>, <span class="n">5</span>);
+
+<span class="c">// Or drive the raw core directly (bring your own embeddings)</span>
+<span class="k">import</span> { FerrovecCore } <span class="k">from</span> <span class="s">'ferrovec'</span>;
+<span class="k">const</span> index = <span class="k">new</span> <span class="f">FerrovecCore</span>(<span class="n">384</span>);
+index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding);          <span class="c">// Float32Array in, [{id,distance}] out</span></pre>
+    </div>
+  </div>
+</div>
+
+<section class="band" id="vision">
+  <div class="wrap">
+    <p class="eyebrow">The vision</p>
+    <p class="manifesto">The winning WASM apps never asked anyone to switch languages. They put a <b>Rust engine</b> inside and a <span class="w">plain JavaScript API</span> outside. ferrovec brings that pattern to <b>local-first AI</b>.</p>
+    <div class="vision-grid" style="max-width:100%">
+      <div class="vision-item">
+        <p class="eyebrow">01 — Private by default</p>
+        <h4>Your data never leaves the tab</h4>
+        <p>Embeddings are computed on-device and stored in the browser's origin-private file system. No API keys, no network round-trips, no server logs — semantic search a privacy policy can actually promise.</p>
+      </div>
+      <div class="vision-item">
+        <p class="eyebrow">02 — Engine layer, not UI layer</p>
+        <h4>Rust does the math, JS does the DOM</h4>
+        <p>Rust isn't going to replace React — but it wins decisively as a compute core. ferrovec is that core, a nearest-neighbor engine, hidden behind an API a JS developer already understands.</p>
+      </div>
+      <div class="vision-item">
+        <p class="eyebrow">03 — Offline &amp; instant</p>
+        <h4>Works on a plane, restores in a blink</h4>
+        <p>The index lives on disk via OPFS. Reload the page and your vectors are already there — no re-embedding, no rebuild. Built for apps that must work with no connection at all.</p>
+      </div>
+      <div class="vision-item">
+        <p class="eyebrow">04 — Batteries included</p>
+        <h4>One package, not five primitives</h4>
+        <p>Today you stitch together an embedder, an index, and a persistence layer by hand. ferrovec welds them into a single dependency — the integrated piece the ecosystem is missing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="story-band" id="story">
+  <div class="wrap story-col">
+    <p class="eyebrow">Our story</p>
+    <h2>Why we built ferrovec</h2>
+    <p class="story-lead">We started with a frustration, not a product.</p>
+    <p>For years the promise was that WebAssembly would let Rust reshape the frontend — and for years, it didn't happen. So we ran the numbers across a hundred sources, and the verdict surprised us. Rust wasn't losing on speed; on raw DOM benchmarks it was already beating React. It was losing on everything <em>human</em> — hiring, tooling, the daily developer loop, an ecosystem a fraction the size.</p>
+    <p>But buried in that research was a pattern we couldn't unsee. Every WebAssembly app that <em>did</em> win — Figma, Photoshop on the web, the spreadsheet engines, the video tools — shared one shape: a Rust or C++ engine on the inside, a plain JavaScript API on the outside. None of them ever asked a web developer to learn a new language. They made the language invisible.</p>
+    <blockquote class="story-quote">The goal was never to replace React. It was to find the one job WebAssembly does ten times better — and hide it behind an API a JavaScript developer already knows.</blockquote>
+    <p>We found that job in the sudden, explosive need for AI features in ordinary web apps. Embeddings. Semantic search. “Chat with your notes.” The kind of thing that today means shipping your users' private data to someone else's server. We asked what it would take to do it entirely on-device — no server, no API key, nothing leaving the tab — and hit a wall. The embedding models were there. But the piece that <em>stores</em> and <em>searches</em> those vectors, fast, at scale, and remembers them between sessions — that piece didn't exist. The libraries that tried were abandoned, or brute-force, or made you rebuild the entire index just to add a single item.</p>
+    <p>So we built it. ferrovec is the missing piece: a real nearest-neighbor engine in Rust, small enough to ship to a browser, that saves to disk and never forgets. Private by default, because the data never moves. Offline by default, because there's no server to call. Invisible by default — because you write three lines of JavaScript and never once think about the Rust underneath.</p>
+    <p class="story-close">That's why we're here. Not to win a language war — but to give every web developer a piece of infrastructure that should have existed already, and to prove that the engine-inside, API-outside pattern is how Rust actually wins the web.</p>
+  </div>
+</section>
+
+<section class="band alt" id="what">
+  <div class="wrap">
+    <p class="eyebrow">What it does</p>
+    <h2>Everything you need for local semantic search</h2>
+    <p class="section-lede">Feed it vectors (and soon, text). Under the hood it indexes, searches, and persists — you touch none of it.</p>
+    <div class="features">
+      <div class="feat"><div class="fi">HNSW</div><h4>Approximate nearest-neighbor</h4><p>A hand-rolled Hierarchical Navigable Small World graph — the algorithm behind Pinecone, Weaviate, and Qdrant — in a tiny WASM core.</p></div>
+      <div class="feat"><div class="fi">INCREMENTAL</div><h4>Insert one at a time</h4><p>Add vectors as they arrive. No rebuild-the-whole-index penalty — the flaw that hobbles every other browser vector lib.</p></div>
+      <div class="feat"><div class="fi">SIMD</div><h4>SIMD-accelerated distance</h4><p>The distance kernel uses WASM SIMD128 with a scalar reference fallback — a free speedup with zero deployment headers.</p></div>
+      <div class="feat"><div class="fi">TINY</div><h4>~33 KB gzipped</h4><p>Dependency-light by design — <code>serde</code> + <code>postcard</code> only, no <code>getrandom</code>, no threads. Small enough to ship anywhere.</p></div>
+      <div class="feat"><div class="fi">METRICS</div><h4>Cosine, dot &amp; L2</h4><p>Normalized vectors get a fast dot path; raw vectors get cosine or squared-Euclidean. Smaller always means closer.</p></div>
+      <div class="feat"><div class="fi">UPSERT</div><h4>Update &amp; delete by id</h4><p>Re-insert an id to replace it; remove to tombstone. IDs are your own strings — map them to whatever your app stores.</p></div>
+      <div class="feat"><div class="fi">SERDE</div><h4>Portable byte format</h4><p>Serialize the whole index to a versioned byte blob and reload it anywhere — the same core runs natively in Rust.</p></div>
+      <div class="feat"><div class="fi">SAFE</div><h4>No <code>unsafe</code> in the core</h4><p><code>#![deny(unsafe_code)]</code> crate-wide; <code>unsafe</code> is confined to the audited SIMD kernel alone.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="how">
+  <div class="wrap">
+    <p class="eyebrow">How it works</p>
+    <h2>Four layers, one Worker</h2>
+    <p class="section-lede">The synchronous OPFS API only works inside a dedicated Web Worker — and HNSW belongs off the main thread anyway. Both constraints point at one clean design, shipped in 0.2.0.</p>
+    <div class="stack">
+      <div class="slab m"><span class="tag">Main thread · your app</span><div class="b"><b>Ferrovec</b> — a thin async proxy. <code>open / insert / query</code> just message the worker and await a reply.</div></div>
+      <div class="flow">▲ &nbsp;postMessage&nbsp; ▼</div>
+      <div class="slab w"><span class="tag">Dedicated Web Worker · the engine room</span><div class="b">Owns the model, the WASM module, and the exclusive OPFS lock.</div>
+        <div class="indent" style="margin-top:0.7rem;">
+          <div class="slab" style="border-left:3px solid var(--wasm)"><span class="tag">JS · embeddings</span><div class="b"><b>transformers.js</b> — text → <code>Float32Array</code>, WebGPU with WASM fallback.</div></div>
+          <div class="slab r" style="margin-top:0.5rem;"><span class="tag">Rust → WASM · the core (shipped)</span><div class="b"><b>Hand-rolled HNSW</b> — incremental insert, k-NN search, SIMD distance, byte serialization.</div></div>
+        </div>
+      </div>
+      <div class="flow">▲ &nbsp;read / write / flush&nbsp; ▼</div>
+      <div class="slab d"><span class="tag">OPFS · durable, origin-private</span><div class="b"><code>/ferrovec/&lt;name&gt;/index.bin</code>. Survives reloads; never leaves the device.</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="compare">
+  <div class="wrap">
+    <p class="eyebrow">How it compares</p>
+    <h2>The only one built to do all four</h2>
+    <p class="section-lede">Persisted, incremental, HNSW-not-brute-force, and a compiled engine — no existing browser library combines them.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Library</th><th>Engine</th><th>Index</th><th>Incremental</th><th>OPFS persist</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr class="row-us"><td class="name">ferrovec</td><td>Rust/WASM</td><td class="yes">HNSW</td><td class="yes">yes</td><td class="yes">built-in (0.2.0)</td><td>0.2.0 live</td></tr>
+          <tr><td class="name">voy</td><td>Rust/WASM</td><td class="partial">kd-tree</td><td class="no">no — rebuild</td><td class="no">app-managed</td><td>abandoned</td></tr>
+          <tr><td class="name">Orama</td><td>TypeScript</td><td class="no">brute-force</td><td class="yes">yes</td><td class="no">serialize</td><td>active</td></tr>
+          <tr><td class="name">MeMemo</td><td>TypeScript</td><td class="yes">HNSW</td><td class="partial">bulk</td><td class="partial">IndexedDB</td><td>dormant</td></tr>
+          <tr><td class="name">sqlite-vec</td><td>C/WASM</td><td class="no">brute-force</td><td class="yes">yes</td><td class="partial">manual VFS</td><td>active</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:0.82rem; color:var(--ink-faint); margin-top:0.9rem;">Landscape as surveyed July 2026. ferrovec's row reflects the v0.1 core plus the M4 persistence target.</p>
+  </div>
+</section>
+
+<section class="band" id="why">
+  <div class="wrap">
+    <p class="eyebrow w">Why Rust + WebAssembly</p>
+    <h2>A niche where it genuinely wins</h2>
+    <p class="section-lede">Rust's frontend problem was never speed — it was adoption and ecosystem. So we don't fight React; we live where Rust is strongest: the compute core.</p>
+    <div class="stats">
+      <div class="stat"><div class="num">33 KB</div><div class="lbl">gzipped WASM core, wasm-opt'd</div></div>
+      <div class="stat"><div class="num">2</div><div class="lbl">dependencies in the whole crate</div></div>
+      <div class="stat"><div class="num">0.99</div><div class="lbl">recall@1 on a 2,000-vector benchmark</div></div>
+      <div class="stat"><div class="num">0</div><div class="lbl">servers, API keys, or network calls</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt" id="roadmap">
+  <div class="wrap narrow">
+    <p class="eyebrow">Roadmap</p>
+    <h2>Shipped, and what's next</h2>
+    <div class="road">
+      <div class="mile"><span class="mid">M1</span><div><h4>Rust HNSW core <span class="status done">shipped 0.1.0</span></h4><p>Hand-rolled graph: incremental insert, k-NN search, three metrics, byte serialization, full test suite. Native and wasm32.</p></div></div>
+      <div class="mile"><span class="mid">M2</span><div><h4>WASM boundary + SIMD <span class="status done">shipped 0.1.0</span></h4><p>wasm-bindgen <code>FerrovecCore</code> class over <code>Float32Array</code>, SIMD128 distance kernel, ~33 KB gzip.</p></div></div>
+      <div class="mile"><span class="mid">—</span><div><h4>Compaction <span class="status done">shipped 0.2.0</span></h4><p><code>compact()</code> rebuilds the index in place to reclaim memory from tombstoned nodes; <code>clear()</code> resets it. On crates.io now.</p></div></div>
+      <div class="mile"><span class="mid">M3</span><div><h4>Worker + embeddings <span class="status done">shipped 0.2.0</span></h4><p>Dedicated worker loads transformers.js + WASM; end-to-end <code>insert(text)</code> / <code>query(text)</code>. Live on npm.</p></div></div>
+      <div class="mile"><span class="mid">M4</span><div><h4>OPFS persistence <span class="status done">shipped 0.2.0</span></h4><p>Sync-access-handle read/write/flush, hydrate on open, survive reloads. The differentiator nobody else ships — verified with a real headless-browser round-trip.</p></div></div>
+      <div class="mile"><span class="mid">M5</span><div><h4>ferrovec on npm <span class="status done">shipped 0.2.0</span></h4><p>The three-line, batteries-included browser API — embeddings + persistence — <a href="https://www.npmjs.com/package/ferrovec">live on npm</a>.</p></div></div>
+      <div class="mile"><span class="mid">M6</span><div><h4>Cross-tab leader election <span class="status next">next → 0.3.0</span></h4><p>Web Locks + BroadcastChannel single-writer, so multiple tabs share one store safely.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="install">
+  <div class="wrap">
+    <p class="eyebrow">Get started</p>
+    <h2>Two registries, one name</h2>
+    <p class="section-lede">The Rust crate is live today. The browser package follows with M3–M5.</p>
+    <div class="install-grid">
+      <div class="install-card">
+        <div class="h"><span class="brand" style="font-size:1rem;"><span class="mark">▲</span> ferrovec</span><span class="badge live">crates.io · live</span></div>
+        <pre><span class="c"># the HNSW engine — native + WASM</span>
+cargo add ferrovec</pre>
+        <p style="font-size:0.9rem; color:var(--ink-soft); margin:0.8rem 0 0;">The pure-Rust HNSW index, usable server-side and as the WASM core. <a href="https://docs.rs/ferrovec">Read the docs →</a></p>
+      </div>
+      <div class="install-card">
+        <div class="h"><span class="brand" style="font-size:1rem;"><span class="mark">▲</span> ferrovec</span><span class="badge live">npm · live</span></div>
+        <pre><span class="c"># the WASM core for the browser</span>
+npm install ferrovec</pre>
+        <p style="font-size:0.9rem; color:var(--ink-soft); margin:0.8rem 0 0;">The full three-line <code>open/insert/query</code> API — transformers.js embeddings + OPFS persistence — is live in <strong>0.2.0</strong>, plus the raw <code>FerrovecCore</code> class. <a href="https://www.npmjs.com/package/ferrovec">View on npm →</a></p>
+      </div>
+    </div>
+    <p style="margin-top:1.5rem; text-align:center;"><a class="btn btn-primary" href="https://github.com/singhpratech/ferrovec">★ Follow development on GitHub</a></p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-inner">
+      <div>
+        <div class="brand"><span class="mark">▲</span> ferrovec</div>
+        <p>A persisted vector store for the browser, with a Rust engine inside. Local-first, private by default, no server required.</p>
+        <p style="color:var(--ink-faint);">MIT licensed · built in the open by <a href="https://github.com/singhpratech">singhpratech</a>.</p>
+      </div>
+      <div class="foot-links">
+        <a href="https://crates.io/crates/ferrovec">crates.io</a>
+        <a href="https://www.npmjs.com/package/ferrovec">npm</a>
+        <a href="https://docs.rs/ferrovec">docs.rs</a>
+        <a href="https://github.com/singhpratech/ferrovec">GitHub</a>
+        <a href="#roadmap">Roadmap</a>
+      </div>
+    </div>
+    <p class="disclaimer">ferrovec is in active early development. v0.2.0 is live on both crates.io (Rust core + compaction) and npm (the full browser package — transformers.js embeddings + OPFS persistence). Cross-tab support (M6) is next. Benchmark figures are from the project's own test suite; treat third-party comparisons as directional.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var canvas = document.getElementById('graph');
+  if (!canvas) return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var ctx = canvas.getContext('2d');
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  var nodes = [], edges = [], W = 0, H = 0, raf = null, t = 0;
+  function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  var colNode = css('--canvas-node') || '#c13a15';
+  var colEdge = css('--canvas-edge') || 'rgba(91,72,216,0.2)';
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    W = rect.width; H = rect.height;
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    build();
+  }
+  function build() {
+    var count = Math.max(18, Math.min(46, Math.floor(W / 34)));
+    nodes = [];
+    for (var i = 0; i < count; i++) {
+      nodes.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - 0.5) * 0.18, vy: (Math.random() - 0.5) * 0.18, r: 1.5 + Math.random() * 2.4, layer: Math.random() < 0.22 ? 1 : 0 });
+    }
+    linkEdges();
+  }
+  function linkEdges() {
+    edges = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var dists = [];
+      for (var j = 0; j < nodes.length; j++) {
+        if (i === j) continue;
+        var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+        dists.push({ j: j, d: dx * dx + dy * dy });
+      }
+      dists.sort(function (a, b) { return a.d - b.d; });
+      var k = nodes[i].layer ? 4 : 3;
+      for (var n = 0; n < k && n < dists.length; n++) edges.push({ a: i, b: dists[n].j });
+    }
+  }
+  var relinkTimer = 0;
+  function frame() {
+    t += 1;
+    ctx.clearRect(0, 0, W, H);
+    for (var i = 0; i < nodes.length; i++) {
+      var p = nodes[i];
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > W) p.vx *= -1;
+      if (p.y < 0 || p.y > H) p.vy *= -1;
+    }
+    relinkTimer++;
+    if (relinkTimer > 40) { linkEdges(); relinkTimer = 0; }
+    ctx.lineWidth = 1; ctx.strokeStyle = colEdge; ctx.beginPath();
+    for (var e = 0; e < edges.length; e++) { var A = nodes[edges[e].a], B = nodes[edges[e].b]; ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); }
+    ctx.stroke();
+    var pulse = (Math.sin(t * 0.03) + 1) * 0.5;
+    for (var m = 0; m < nodes.length; m++) {
+      var q = nodes[m];
+      ctx.beginPath(); ctx.fillStyle = colNode;
+      ctx.globalAlpha = q.layer ? 0.85 : 0.5 + pulse * 0.2;
+      ctx.arc(q.x, q.y, q.layer ? q.r + 0.8 : q.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    raf = requestAnimationFrame(frame);
+  }
+  function start() {
+    resize();
+    if (reduce) {
+      linkEdges(); ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = colEdge; ctx.lineWidth = 1; ctx.beginPath();
+      for (var e = 0; e < edges.length; e++) { var A = nodes[edges[e].a], B = nodes[edges[e].b]; ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); }
+      ctx.stroke();
+      for (var m = 0; m < nodes.length; m++) { var q = nodes[m]; ctx.beginPath(); ctx.fillStyle = colNode; ctx.globalAlpha = q.layer ? 0.85 : 0.55; ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (raf) cancelAnimationFrame(raf);
+    frame();
+  }
+  var rt;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(start, 150); });
+  var mo = new MutationObserver(function () { colNode = css('--canvas-node'); colEdge = css('--canvas-edge'); });
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  start();
+})();
+</script>
+</body>
+</html>

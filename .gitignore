@@ -1,0 +1,11 @@
+/target
+js/pkg
+node_modules
+Cargo.lock
+
+# M3 JS package
+js/node_modules
+js/dist
+js/.tsup
+.tsup
+*.tsbuildinfo
