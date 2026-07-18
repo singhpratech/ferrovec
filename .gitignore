@@ -12,3 +12,7 @@ js/.tsup
 
 # local publish runbook (never commit)
 PUBLISHING.md
+
+# local launch/promo drafts (never commit)
+promo/
+PROMO.md
