@@ -74,6 +74,8 @@
   .nav { display: flex; align-items: center; justify-content: space-between; padding: 1.4rem 0 3.5rem; flex-wrap: wrap; gap: 1rem; }
   .brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; letter-spacing: -0.02em; font-size: 1.15rem; }
   .brand .mark { color: var(--accent); font-size: 1.3rem; line-height: 1; }
+  .brand .brand-logo { width: 1.2em; height: 1.2em; border-radius: 4px; object-fit: cover; box-shadow: 0 0 0 1px var(--line); flex: 0 0 auto; display: inline-block; }
+  .btn .brand-logo { width: 1.05em; height: 1.05em; border-radius: 3px; object-fit: cover; vertical-align: -0.15em; display: inline-block; }
   .nav-links { display: flex; gap: 1.4rem; flex-wrap: wrap; font-size: 0.82rem; }
   .nav-links a { color: var(--ink-soft); text-decoration: none; letter-spacing: 0.02em; }
   .nav-links a:hover { color: var(--accent); }
@@ -219,7 +221,7 @@
 
     <div class="cta-row">
       <a class="btn btn-primary" href="./demo.html">▶ Try the live demo</a>
-      <a class="btn btn-ghost" href="https://crates.io/crates/ferrovec">▲ crates.io →</a>
+      <a class="btn btn-ghost" href="https://crates.io/crates/ferrovec"><img class="brand-logo" src="./assets/logo-256.png" alt="" /> crates.io →</a>
       <a class="btn btn-ghost" href="https://www.npmjs.com/package/ferrovec">npm →</a>
       <a class="btn btn-ghost" href="https://github.com/singhpratech/ferrovec">GitHub →</a>
     </div>
@@ -378,13 +380,13 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
     <p class="section-lede">The Rust crate is live on crates.io; the full browser package — M3 through M6 — is live on npm.</p>
     <div class="install-grid">
       <div class="install-card">
-        <div class="h"><span class="brand" style="font-size:1rem;"><span class="mark">▲</span> ferrovec</span><span class="badge live">crates.io · live</span></div>
+        <div class="h"><span class="brand" style="font-size:1rem;"><img class="brand-logo" src="./assets/logo-256.png" alt="" /> ferrovec</span><span class="badge live">crates.io · live</span></div>
         <pre><span class="c"># the HNSW engine — native + WASM</span>
 cargo add ferrovec</pre>
         <p style="font-size:0.9rem; color:var(--ink-soft); margin:0.8rem 0 0;">The pure-Rust HNSW index, usable server-side and as the WASM core. <a href="https://docs.rs/ferrovec">Read the docs →</a></p>
       </div>
       <div class="install-card">
-        <div class="h"><span class="brand" style="font-size:1rem;"><span class="mark">▲</span> ferrovec</span><span class="badge live">npm · live</span></div>
+        <div class="h"><span class="brand" style="font-size:1rem;"><img class="brand-logo" src="./assets/logo-256.png" alt="" /> ferrovec</span><span class="badge live">npm · live</span></div>
         <pre><span class="c"># the WASM core for the browser</span>
 npm install ferrovec</pre>
         <p style="font-size:0.9rem; color:var(--ink-soft); margin:0.8rem 0 0;">The full three-line <code>open/insert/query</code> API — transformers.js embeddings, OPFS persistence, and cross-tab leader election — is live in <strong>0.3.1</strong>, plus the raw <code>FerrovecCore</code> class. <a href="https://www.npmjs.com/package/ferrovec">View on npm →</a></p>
@@ -398,7 +400,7 @@ npm install ferrovec</pre>
   <div class="wrap">
     <div class="foot-inner">
       <div>
-        <div class="brand"><span class="mark">▲</span> ferrovec</div>
+        <div class="brand"><img class="brand-logo" src="./assets/logo-256.png" alt="" /> ferrovec</div>
         <p>A persisted vector store for the browser, with a Rust engine inside. Local-first, private by default, no server required.</p>
         <p style="color:var(--ink-faint);">MIT licensed · built in the open by <a href="https://github.com/singhpratech">singhpratech</a>.</p>
       </div>
