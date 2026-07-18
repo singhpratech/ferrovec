@@ -6,7 +6,8 @@ embeddings over a Rust/wasm HNSW core, running on a dedicated Web Worker, with
 
 You give it text. It embeds, indexes, and searches — off the main thread.
 
-**`0.2.0`** — the three-line browser API (embeddings + OPFS persistence) is here.
+**`0.3.0`** — the three-line browser API (embeddings + OPFS persistence), now
+**safe across multiple tabs** via single-writer leader election.
 · [Website](https://singhpratech.github.io/ferrovec/) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
 
 ## Install
@@ -69,14 +70,80 @@ How it works:
 - Opt out with `Ferrovec.open('notes', { persist: false })` for pure in-memory.
 - Where OPFS sync access is unavailable (Node, insecure context, unsupported
   browser) it transparently falls back to in-memory.
-- The sync handle takes an **exclusive lock**. If another tab already holds it,
-  the open logs a warning and falls back to in-memory (cross-tab leader election
-  is a future milestone).
+- The sync handle takes an **exclusive lock**, held by exactly one tab. Other
+  tabs opening the same store no longer degrade — they join as **followers**
+  that share the one persistent store (see [Multi-tab](#multi-tab) below).
 
-Check the resolved mode with `db.persistent` (`true` = writing to disk).
+Check the resolved mode with `db.persistent` (`true` = writing to disk) and the
+coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
 
-> **Secure context required.** OPFS sync access handles only work over HTTPS or
-> `http://localhost`. Persistence is silently disabled elsewhere.
+> **Secure context required.** OPFS sync access handles (and the Web Locks API
+> used for leader election) only work over HTTPS or `http://localhost`.
+> Persistence and cross-tab coordination are silently disabled elsewhere.
+
+## Multi-tab
+
+Opening the **same store name in two tabs** used to make the second tab silently
+degrade to a private in-memory copy — the two would diverge and the second tab's
+writes never reached disk. As of `0.3.0` ferrovec runs **single-writer leader
+election** so multiple tabs safely share one persistent store:
+
+```ts
+// Tab A
+const a = await Ferrovec.open('notes');
+a.role; // 'leader'  — owns the OPFS store + the authoritative index
+await a.insert('written in tab A', { id: 'x' });
+
+// Tab B (same origin, same name)
+const b = await Ferrovec.open('notes');
+b.role; // 'follower' — shares A's store, no divergence
+await b.query('written in tab A'); // sees A's write immediately
+await b.insert('written in tab B', { id: 'y' }); // proxied to A, persisted once
+```
+
+How it works:
+
+- **Leader election (Web Locks).** Each store worker requests an exclusive
+  [Web Lock](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API)
+  named `ferrovec-leader:<name>`. The tab that wins opens the OPFS store and owns
+  the only `Engine` + persistence. Exactly one writer exists at a time, so the
+  old lock-contention fallback can never happen.
+- **Followers proxy to the leader** over a
+  [BroadcastChannel](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API)
+  (`ferrovec-coord:<name>`): `insert`/`query`/`remove`/`size` are correlation-id
+  request/response round-trips answered by the leader's engine. This *proxy*
+  model is always consistent — there is one authoritative index, so every tab
+  sees every other tab's writes.
+- **Failover.** When the leader tab closes or crashes, its Web Lock releases and
+  a waiting follower is **promoted**: it opens the OPFS store (rehydrating from
+  `index.bin`) and becomes the new leader. In-flight follower requests are
+  retried and transparently answered by the new leader; `db.role` flips from
+  `'follower'` to `'leader'` on promotion. Because the promoting tab holds the
+  exclusive lock, it is the legitimate owner of `index.bin`: on transient OPFS
+  contention it waits for the handle rather than degrading to an empty in-memory
+  copy, and if promotion genuinely fails (a corrupt index, or the handle never
+  frees) it **re-queues** for the lock instead of dropping out of the election —
+  so a shared store never ends up with zero leaders.
+- **Always degrade, never crash.** Where the Web Locks API or BroadcastChannel
+  is unavailable (older browser, insecure context, Node), a store opens as
+  `role: 'solo'` — the sole owner, exactly as before `0.3.0`. (This best-effort
+  in-memory fallback applies only to a solo/no-lock open, never to a lock-holding
+  leader — a legitimate owner is never silently degraded over an intact index.)
+
+> **Consistency note.** Retries make a failover gap invisible; against a live
+> leader they are deduplicated **at-most-once** — a retry replays a completed
+> response and, if it races an op still executing (e.g. a slow first embed),
+> coalesces onto it rather than starting a second execution, so no duplicate
+> runs. At the exact instant of a failover a request may reach both the old and
+> new leader. Queries, removes, and explicit-id inserts (upserts) are idempotent,
+> so only an *auto-id* insert racing that instant could double-insert — a
+> documented trade-off of the dependency-free proxy design.
+
+> **Liveness.** A frozen tab (Chrome tab-freezing does not release Web Locks)
+> can't wedge peers forever: a follower's `open()` and each follower op are
+> bounded and reject with a clear timeout if no leader ever responds. The
+> defaults are generous, so a leader that is merely slow (still loading its
+> model, a slow first embed) is unaffected.
 
 ## Bundler setup
 
@@ -122,7 +189,7 @@ The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 | **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.2.0` |
 | **M4** | OPFS persistence (survives reloads) | ✅ `0.2.0` |
 | **M5** | Three-line browser API on npm | ✅ `0.2.0` |
-| **M6** | Cross-tab leader election (Web Locks) | ⏭ next → `0.3.0` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.0` |
 
 The pure-Rust HNSW core is published separately on [crates.io](https://crates.io/crates/ferrovec).
 

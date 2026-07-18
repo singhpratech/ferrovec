@@ -6,14 +6,15 @@
  * map. All embedding + indexing happens off the main thread inside the worker.
  */
 
+import type { Role } from './coordinator.ts';
 import type {
   InsertResult,
   OpenResult,
   RemoveResult,
   SizeResult,
+  WorkerOutbound,
   WorkerRequest,
   WorkerRequestBody,
-  WorkerResponse,
 } from './protocol.ts';
 import type { Device, QueryResult } from './types.ts';
 
@@ -44,15 +45,26 @@ interface Pending {
 }
 
 export class Ferrovec {
+  /** Max time db.close() waits for the worker's graceful close before terminating. */
+  static readonly #CLOSE_TIMEOUT_MS = 2000;
+
   readonly #worker: Worker;
   readonly #pending = new Map<number, Pending>();
   #nextId = 0;
   #persistent = false;
+  #role: Role = 'solo';
 
   private constructor(worker: Worker) {
     this.#worker = worker;
-    this.#worker.onmessage = (event: MessageEvent<WorkerResponse>): void => {
-      const response = event.data;
+    this.#worker.onmessage = (event: MessageEvent<WorkerOutbound>): void => {
+      const message = event.data;
+      // Unsolicited pushes carry a `type` discriminant and no correlation id —
+      // e.g. a failover role change. Request responses never have `type`.
+      if ('type' in message) {
+        if (message.event === 'role') this.#role = message.role;
+        return;
+      }
+      const response = message;
       const pending = this.#pending.get(response.id);
       if (!pending) return;
       this.#pending.delete(response.id);
@@ -84,12 +96,25 @@ export class Ferrovec {
       persist: options.persist,
     });
     client.#persistent = result.persistent;
+    client.#role = result.role;
     return client;
   }
 
   /** Whether this index persists to disk (OPFS) or is running in-memory only. */
   get persistent(): boolean {
     return this.#persistent;
+  }
+
+  /**
+   * This tab's cross-tab coordination role:
+   * - `'leader'` — owns the OPFS store and the authoritative index;
+   * - `'follower'` — shares another tab's store, proxying ops to the leader;
+   * - `'solo'` — no coordination (Web Locks/BroadcastChannel unavailable), sole owner.
+   *
+   * Updates live: a follower reports `'leader'` after it is promoted on failover.
+   */
+  get role(): Role {
+    return this.#role;
   }
 
   #send<T = unknown>(payload: WorkerRequestBody): Promise<T> {
@@ -127,7 +152,14 @@ export class Ferrovec {
   /** Close the index and terminate the worker. */
   async close(): Promise<void> {
     try {
-      await this.#send({ type: 'close' });
+      // Race the graceful close against a short timeout: a wedged/frozen worker
+      // must not hang db.close() forever — we terminate() regardless below.
+      await Promise.race([
+        this.#send({ type: 'close' }),
+        new Promise<void>((resolve) => setTimeout(resolve, Ferrovec.#CLOSE_TIMEOUT_MS)),
+      ]);
+    } catch {
+      /* close send failed — terminate() still reclaims the worker */
     } finally {
       this.#worker.terminate();
     }

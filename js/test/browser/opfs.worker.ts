@@ -1,28 +1,32 @@
 /**
  * Browser test worker (fake embedder).
  *
- * Mirrors the production `src/worker.ts` orchestration — {@link openStore} →
- * decode snapshot → rehydrate/create core → {@link Engine} bound to the store —
- * but injects a deterministic in-worker embedder so the OPFS round-trip test
- * exercises the *real* persistence code path (persistence.ts, snapshot.ts,
- * engine.ts, the wasm core's `toBytes`/`fromBytes`) without downloading model
- * weights. Driven over postMessage by `opfs.test.ts` running in Chromium.
+ * Mirrors the production `src/worker.ts` orchestration — a {@link Coordinator}
+ * that elects a leader (Web Locks), owns the OPFS-backed {@link Engine} when it
+ * wins, and proxies to the leader over a BroadcastChannel when it does not — but
+ * injects a deterministic in-worker embedder so the OPFS + cross-tab tests
+ * exercise the *real* coordination/persistence code path (coordinator.ts,
+ * persistence.ts, snapshot.ts, engine.ts, the wasm core's `toBytes`/`fromBytes`)
+ * without downloading model weights. Driven over postMessage by the tests in
+ * `opfs.test.ts` / `coord.test.ts` running in Chromium.
  */
 
-import { createCoreFromBytes } from '../../src/core-loader.ts';
+import { Coordinator } from '../../src/coordinator.ts';
 import { Engine } from '../../src/engine.ts';
-import { openStore } from '../../src/persistence.ts';
-import { decodeSnapshot } from '../../src/snapshot.ts';
-import type { Embedder, VectorCore } from '../../src/types.ts';
+import type { Embedder } from '../../src/types.ts';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 const DIMS = 32;
 
 /** Deterministic FNV-1a bag-of-tokens embedder (identical text → identical vec). */
-function fakeEmbedder(): Embedder {
+function fakeEmbedder(slowEmbedMs = 0): Embedder {
   return {
     dims: DIMS,
     async embed(text: string): Promise<Float32Array> {
+      // Simulate a slow (e.g. wasm-warmup) embed so a follower's request times
+      // out and retries while the leader is still executing — exercises the
+      // in-flight dedupe (MEDIUM-1: no double auto-id insert).
+      if (slowEmbedMs > 0) await new Promise((r) => setTimeout(r, slowEmbedMs));
       const acc = new Array<number>(DIMS).fill(0);
       for (const token of text.toLowerCase().split(/\s+/).filter(Boolean)) {
         let h = 2166136261 >>> 0;
@@ -41,11 +45,11 @@ function fakeEmbedder(): Embedder {
   };
 }
 
-let engine: Engine | null = null;
+let store: Coordinator | null = null;
 
-function requireEngine(): Engine {
-  if (!engine) throw new Error('not open');
-  return engine;
+function requireStore(): Coordinator {
+  if (!store) throw new Error('not open');
+  return store;
 }
 
 interface Req {
@@ -56,40 +60,65 @@ interface Req {
   text?: string;
   docId?: string;
   k?: number;
+  // ---- fault-injection knobs (used by coord-defects.test.ts) ----
+  /** Make the next N `makeEngine` calls throw (tests leader-init/promotion failure). */
+  failEngineTimes?: number;
+  /** Delay before `makeEngine` resolves, in ms (tests role-after-engine + open bound). */
+  slowEngineMs?: number;
+  /** Delay inside every `embed`, in ms (tests in-flight dedupe of retries). */
+  slowEmbedMs?: number;
+  /** Follower join-handshake bound, in ms. */
+  openTimeoutMs?: number;
+  /** Follower per-op bound, in ms. */
+  opTimeoutMs?: number;
 }
 
-async function open(req: Req): Promise<boolean> {
-  const store = await openStore(req.name ?? 'test', { persist: req.persist, debounceMs: 50 });
+// Module-level so it survives across a failover *promotion* (a follower builds
+// no engine at open; its first makeEngine call is the promotion attempt).
+let failEngineRemaining = 0;
 
-  let core: VectorCore | undefined;
-  let initialTexts: Map<string, string> | undefined;
-  if (store.initialBytes && store.initialBytes.length > 0) {
-    const decoded = decodeSnapshot(store.initialBytes);
-    if (decoded.core.length > 0) {
-      core = await createCoreFromBytes(decoded.core);
-      initialTexts = decoded.texts;
-    }
-  }
-
-  const created = await Engine.create({ embedder: fakeEmbedder(), core, initialTexts, persister: store });
-  engine = created;
-  store.bind(() => created.snapshot());
-  return store.persistent;
+async function open(req: Req): Promise<{ persistent: boolean; role: string }> {
+  if (typeof req.failEngineTimes === 'number') failEngineRemaining = req.failEngineTimes;
+  const coordinator = await Coordinator.open({
+    name: req.name ?? 'test',
+    persist: req.persist,
+    debounceMs: 50,
+    requestTimeoutMs: 250,
+    openTimeoutMs: req.openTimeoutMs,
+    opTimeoutMs: req.opTimeoutMs,
+    makeEngine: async ({ core, initialTexts, persister }) => {
+      if (req.slowEngineMs && req.slowEngineMs > 0) {
+        await new Promise((r) => setTimeout(r, req.slowEngineMs));
+      }
+      if (failEngineRemaining > 0) {
+        failEngineRemaining--;
+        throw new Error('injected engine build failure');
+      }
+      return Engine.create({ embedder: fakeEmbedder(req.slowEmbedMs), core, initialTexts, persister });
+    },
+  });
+  store = coordinator;
+  return { persistent: coordinator.persistent, role: coordinator.role };
 }
 
 async function handle(req: Req): Promise<unknown> {
   switch (req.type) {
     case 'open':
-      return { persistent: await open(req) };
+      return open(req);
     case 'insert':
-      return { id: await requireEngine().insert(req.text ?? '', req.docId) };
+      return { id: await requireStore().insert(req.text ?? '', req.docId) };
     case 'query':
-      return { results: await requireEngine().query(req.text ?? '', req.k ?? 5) };
+      return { results: await requireStore().query(req.text ?? '', req.k ?? 5) };
     case 'size':
-      return { size: requireEngine().size() };
+      return { size: await requireStore().size() };
+    case 'flush':
+      await requireStore().flush();
+      return { flushed: true };
+    case 'role':
+      return { role: requireStore().role };
     case 'close': {
-      const cur = engine;
-      engine = null;
+      const cur = store;
+      store = null;
       if (cur) await cur.close();
       return { closed: true };
     }

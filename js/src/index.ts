@@ -15,6 +15,8 @@ export { Engine } from './engine.ts';
 export { createTransformersEmbedder, DEFAULT_MODEL, DEFAULT_DIMS } from './embedder.ts';
 export { createCore, createCoreFromBytes } from './core-loader.ts';
 
+export type { Role } from './coordinator.ts';
+
 export type {
   Embedder,
   VectorCore,

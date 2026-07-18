@@ -1,85 +1,90 @@
 /**
  * The dedicated Web Worker.
  *
- * Instantiates a single {@link Engine} and dispatches the message protocol from
- * {@link WorkerRequest} to it, posting {@link WorkerResponse} back with the
- * originating correlation id. Deliberately thin — all real work lives in Engine.
+ * Instantiates a single {@link Coordinator} for the opened store and dispatches
+ * the message protocol from {@link WorkerRequest} to it, posting
+ * {@link WorkerResponse} back with the originating correlation id. The
+ * coordinator handles cross-tab leader election (M6): this worker is either the
+ * leader that owns the {@link Engine} + OPFS persistence, a follower proxying to
+ * the leader, or solo when coordination is unavailable. Deliberately thin — all
+ * real work lives in Coordinator/Engine.
  */
 
-import { createCoreFromBytes } from './core-loader.ts';
+import { Coordinator } from './coordinator.ts';
 import { Engine } from './engine.ts';
-import { openStore } from './persistence.ts';
-import type { WorkerRequest, WorkerResponse } from './protocol.ts';
-import { decodeSnapshot } from './snapshot.ts';
-import type { VectorCore } from './types.ts';
+import type { RoleChangeEvent, WorkerRequest, WorkerResponse } from './protocol.ts';
 
 // In a dedicated worker `self` is a DedicatedWorkerGlobalScope; the DOM lib
 // (also enabled) types it as `Window`, so narrow it explicitly.
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
-let engine: Engine | null = null;
+let store: Coordinator | null = null;
 
-function requireEngine(): Engine {
-  if (!engine) {
-    throw new Error('engine is not open; send an "open" request first');
+function requireStore(): Coordinator {
+  if (!store) {
+    throw new Error('store is not open; send an "open" request first');
   }
-  return engine;
+  return store;
 }
 
 /**
- * Build (or rehydrate) an {@link Engine} wired to an OPFS-backed store.
- *
- * When the store yielded bytes from a previous session we decode them and
- * rebuild the core via `fromBytes`; otherwise we let {@link Engine.create}
- * build a fresh core sized to the embedder. Either way the store is bound to
- * the engine's snapshot source before returning, so subsequent mutations
- * persist. Returns whether the resulting engine is actually persistent.
+ * Open the coordinated store. The {@link Coordinator} elects a leader via the
+ * Web Locks API; whichever worker wins builds the authoritative {@link Engine}
+ * here (real transformers embedder + wasm core, rehydrated from OPFS when a
+ * prior snapshot exists). Followers build no engine and proxy to the leader.
  */
-async function open(request: Extract<WorkerRequest, { type: 'open' }>): Promise<boolean> {
-  const store = await openStore(request.name, { persist: request.persist });
-
-  let core: VectorCore | undefined;
-  let initialTexts: Map<string, string> | undefined;
-  if (store.initialBytes && store.initialBytes.length > 0) {
-    const { core: coreBytes, texts } = decodeSnapshot(store.initialBytes);
-    if (coreBytes.length > 0) {
-      core = await createCoreFromBytes(coreBytes);
-      initialTexts = texts;
-    }
+async function open(request: Extract<WorkerRequest, { type: 'open' }>): Promise<Coordinator> {
+  // Re-opening in the same worker: close the previous coordinator first so its
+  // Web Lock + OPFS handle are released rather than leaked when `store` is
+  // overwritten below.
+  if (store) {
+    const prev = store;
+    store = null;
+    await prev.close();
   }
-
-  const created = await Engine.create({
-    model: request.model,
-    device: request.device,
-    persister: store,
-    core,
-    initialTexts,
+  const coordinator = await Coordinator.open({
+    name: request.name,
+    persist: request.persist,
+    makeEngine: ({ core, initialTexts, persister }) =>
+      Engine.create({
+        model: request.model,
+        device: request.device,
+        core,
+        initialTexts,
+        persister,
+      }),
   });
-  engine = created;
-  // Bind to this specific instance, not the module `engine` global: `close`
-  // nulls the global before the final flush runs, and that flush must still be
-  // able to snapshot the engine it belongs to.
-  store.bind(() => created.snapshot());
-  return store.persistent;
+  // Keep `db.role` live on the main thread across a failover promotion.
+  coordinator.onRoleChange = (role): void => {
+    const event: RoleChangeEvent = { type: 'event', event: 'role', role };
+    ctx.postMessage(event);
+  };
+  store = coordinator;
+  return coordinator;
 }
 
 async function handle(request: WorkerRequest): Promise<unknown> {
   switch (request.type) {
     case 'open': {
-      const persistent = await open(request);
-      return { ready: true, persistent };
+      const coordinator = await open(request);
+      return { ready: true, persistent: coordinator.persistent, role: coordinator.role };
     }
     case 'insert':
-      return { id: await requireEngine().insert(request.text, request.docId) };
+      return { id: await requireStore().insert(request.text, request.docId) };
     case 'query':
-      return requireEngine().query(request.text, request.k);
+      return requireStore().query(request.text, request.k);
     case 'remove':
-      return { removed: requireEngine().remove(request.docId) };
+      return { removed: await requireStore().remove(request.docId) };
     case 'size':
-      return { size: requireEngine().size() };
+      return { size: await requireStore().size() };
+    case 'flush':
+      await requireStore().flush();
+      return { flushed: true };
+    case 'role':
+      return { role: requireStore().role };
     case 'close': {
-      const current = engine;
-      engine = null;
+      const current = store;
+      store = null;
       if (current) await current.close();
       return { closed: true };
     }

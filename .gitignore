@@ -9,3 +9,6 @@ js/dist
 js/.tsup
 .tsup
 *.tsbuildinfo
+
+# local publish runbook (never commit)
+PUBLISHING.md

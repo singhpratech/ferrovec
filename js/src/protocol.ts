@@ -4,6 +4,7 @@
  * a correlation `id` that the matching response echoes back.
  */
 
+import type { Role } from './coordinator.ts';
 import type { Device, QueryResult } from './types.ts';
 
 export type RequestId = number;
@@ -38,6 +39,14 @@ export interface SizeRequest {
   id: RequestId;
   type: 'size';
 }
+export interface FlushRequest {
+  id: RequestId;
+  type: 'flush';
+}
+export interface RoleRequest {
+  id: RequestId;
+  type: 'role';
+}
 export interface CloseRequest {
   id: RequestId;
   type: 'close';
@@ -49,6 +58,8 @@ export type WorkerRequest =
   | QueryRequest
   | RemoveRequest
   | SizeRequest
+  | FlushRequest
+  | RoleRequest
   | CloseRequest;
 
 /** `Omit` that distributes over a union (plain `Omit` collapses to shared keys). */
@@ -62,6 +73,8 @@ export interface OpenResult {
   ready: true;
   /** Whether the opened index actually persists to disk (OPFS) or is in-memory. */
   persistent: boolean;
+  /** Coordination role this session resolved to: leader, follower, or solo. */
+  role: Role;
 }
 export interface InsertResult {
   id: string;
@@ -72,6 +85,12 @@ export interface RemoveResult {
 }
 export interface SizeResult {
   size: number;
+}
+export interface FlushResult {
+  flushed: true;
+}
+export interface RoleResult {
+  role: Role;
 }
 export interface CloseResult {
   closed: true;
@@ -88,3 +107,17 @@ export interface ErrorResponse {
   error: string;
 }
 export type WorkerResponse = SuccessResponse | ErrorResponse;
+
+/**
+ * An unsolicited push from the worker (no correlation id) — currently only the
+ * role-change notification the main-thread proxy uses to keep `db.role` live
+ * across a failover promotion.
+ */
+export interface RoleChangeEvent {
+  type: 'event';
+  event: 'role';
+  role: Role;
+}
+
+/** Everything the worker may post back: request responses plus pushed events. */
+export type WorkerOutbound = WorkerResponse | RoleChangeEvent;

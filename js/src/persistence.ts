@@ -28,7 +28,39 @@ export interface OpenStoreOptions {
   persist?: boolean;
   /** Debounce window for snapshot writes, in ms. Defaults to `250`. */
   debounceMs?: number;
+  /**
+   * On sync-handle contention, retry acquiring the exclusive handle this many
+   * times before falling back to in-memory. Defaults to `0` (single attempt —
+   * today's prompt fallback). The M6 coordinator passes a small budget so a
+   * *promoted* leader can wait out the previous leader's OPFS-handle teardown
+   * during a crash failover (the Web Lock and the sync handle release
+   * independently, so there is a brief window where both are contended).
+   */
+  contentionRetries?: number;
+  /** Delay between contention retries, in ms. Defaults to `50`. */
+  retryDelayMs?: number;
+  /**
+   * The caller holds the exclusive leader Web Lock, so it is the one legitimate
+   * owner of `index.bin`. On sync-handle contention it must **never** silently
+   * fall back to in-memory: doing so would present an intact on-disk index as
+   * empty and accept writes that are discarded on reload while `index.bin` sits
+   * untouched. Instead retry for a much longer deadline
+   * ({@link LOCKED_CONTENTION_RETRIES}) and, if the handle truly never frees,
+   * **throw** so promotion fails loudly rather than degrading. Ordinary
+   * (solo / no-lock) opens leave this `false` and keep the best-effort in-memory
+   * fallback unchanged. Defaults to `false`.
+   */
+  requireLock?: boolean;
 }
+
+/**
+ * When the caller holds the leader Web Lock ({@link OpenStoreOptions.requireLock}),
+ * keep retrying the OPFS sync handle at least this many times before giving up.
+ * The outgoing owner's handle always frees once its tab/process finishes tearing
+ * down — even a crashed tab's OS-level cleanup completes — so a generous deadline
+ * (≈ 200 × 50ms = 10s) covers the handoff without silently degrading to memory.
+ */
+const LOCKED_CONTENTION_RETRIES = 200;
 
 /**
  * A store the {@link Engine} can persist into. Extends {@link Persister} (the
@@ -175,36 +207,62 @@ class OpfsStore implements PersistentStore {
 export async function openStore(name: string, options: OpenStoreOptions = {}): Promise<PersistentStore> {
   const persist = options.persist ?? true;
   const debounceMs = options.debounceMs ?? 250;
+  const retryDelayMs = options.retryDelayMs ?? 50;
+  const requireLock = options.requireLock ?? false;
+  // A lock-holding caller is the legitimate owner of index.bin; give it a long
+  // deadline and never degrade to memory (see requireLock). Ordinary opens keep
+  // their caller-supplied (small / zero) budget and the in-memory fallback.
+  const contentionRetries = requireLock
+    ? Math.max(options.contentionRetries ?? 0, LOCKED_CONTENTION_RETRIES)
+    : (options.contentionRetries ?? 0);
 
   if (!persist || !syncAccessAvailable()) {
     return inMemoryStore();
   }
 
-  try {
-    const root = await navigator.storage.getDirectory();
-    const base = await root.getDirectoryHandle('ferrovec', { create: true });
-    const dir = await base.getDirectoryHandle(sanitizeName(name), { create: true });
-    const fileHandle = await dir.getFileHandle('index.bin', { create: true });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const base = await root.getDirectoryHandle('ferrovec', { create: true });
+      const dir = await base.getDirectoryHandle(sanitizeName(name), { create: true });
+      const fileHandle = await dir.getFileHandle('index.bin', { create: true });
 
-    // Throws if another tab holds the exclusive lock — caught below.
-    const handle = await (
-      fileHandle as unknown as FileHandleWithSync
-    ).createSyncAccessHandle();
+      // Throws if another tab holds the exclusive lock — retried/caught below.
+      const handle = await (
+        fileHandle as unknown as FileHandleWithSync
+      ).createSyncAccessHandle();
 
-    let initialBytes: Uint8Array | null = null;
-    const size = handle.getSize();
-    if (size > 0) {
-      const buf = new Uint8Array(size);
-      handle.read(buf, { at: 0 });
-      initialBytes = buf;
+      let initialBytes: Uint8Array | null = null;
+      const size = handle.getSize();
+      if (size > 0) {
+        const buf = new Uint8Array(size);
+        handle.read(buf, { at: 0 });
+        initialBytes = buf;
+      }
+      return new OpfsStore(handle, initialBytes, debounceMs);
+    } catch (err) {
+      // Contention during a failover handoff is transient — retry briefly.
+      if (attempt < contentionRetries) {
+        await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
+        continue;
+      }
+      if (requireLock) {
+        // We hold the leader Web Lock: refuse to masquerade an intact on-disk
+        // index as an empty in-memory one. Fail loudly so promotion can react
+        // (re-queue) rather than silently serving size()===0 over real data.
+        throw new Error(
+          `[ferrovec] OPFS index.bin for "${name}" is still locked after ` +
+            `${contentionRetries} retries while this tab holds the leader lock; ` +
+            `refusing to fall back to in-memory (would lose the on-disk index)`,
+          { cause: err },
+        );
+      }
+      console.warn(
+        `[ferrovec] OPFS persistence unavailable for "${name}" ` +
+          `(likely held by another tab); falling back to in-memory:`,
+        err,
+      );
+      return inMemoryStore();
     }
-    return new OpfsStore(handle, initialBytes, debounceMs);
-  } catch (err) {
-    console.warn(
-      `[ferrovec] OPFS persistence unavailable for "${name}" ` +
-        `(likely held by another tab); falling back to in-memory:`,
-      err,
-    );
-    return inMemoryStore();
   }
 }
