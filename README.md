@@ -14,12 +14,8 @@
   <a href="https://crates.io/crates/ferrovec"><img alt="crates.io" src="https://img.shields.io/crates/v/ferrovec?logo=rust&label=crates.io&color=C13A15" /></a>
   <a href="https://www.npmjs.com/package/ferrovec"><img alt="npm" src="https://img.shields.io/npm/v/ferrovec?logo=npm&label=npm&color=CB3837" /></a>
   <a href="https://docs.rs/ferrovec"><img alt="docs.rs" src="https://img.shields.io/docsrs/ferrovec?logo=docsdotrs&label=docs.rs" /></a>
-  <a href="https://crates.io/crates/ferrovec"><img alt="crates.io downloads" src="https://img.shields.io/crates/d/ferrovec?label=crates%20dl" /></a>
-  <a href="https://www.npmjs.com/package/ferrovec"><img alt="npm downloads" src="https://img.shields.io/npm/dm/ferrovec?label=npm%20dl" /></a>
-  <a href="https://bundlephobia.com/package/ferrovec"><img alt="bundle size" src="https://img.shields.io/bundlephobia/minzip/ferrovec?label=min%2Bgzip&color=5B48D8" /></a>
+  <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-~33%20KB%20gzip-5B48D8" /></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/crates/l/ferrovec" /></a>
-  <a href="https://github.com/singhpratech/ferrovec"><img alt="GitHub stars" src="https://img.shields.io/github/stars/singhpratech/ferrovec?logo=github&color=5B48D8" /></a>
-  <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm32 ready" src="https://img.shields.io/badge/wasm32-ready-5B48D8" /></a>
 </p>
 
 The winning WebAssembly apps never asked anyone to switch languages — they put a Rust engine inside and a plain API outside. `ferrovec` brings that pattern to semantic search: a fast nearest-neighbor core in Rust, so you can run private, offline vector search anywhere — in the browser, on the edge, or on a server.
@@ -31,7 +27,7 @@ The winning WebAssembly apps never asked anyone to switch languages — they put
 - ➕ **Incremental** upsert-style inserts and tombstoning removals — no rebuild-the-whole-index penalty.
 - 💾 **Portable** — compact binary (de)serialization with a versioned header; the same bytes reload natively or in the browser.
 
-> **Status — the roadmap is complete, and both registries are on `0.3.2`.** crates.io `0.3.2` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.3.2` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), and cross-tab single-writer leader election (**M6**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+> **Status — the roadmap is complete, and both registries are on `0.3.3`.** crates.io `0.3.3` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.3.3` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), and cross-tab single-writer leader election (**M6**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
 
 ---
 
@@ -178,7 +174,7 @@ const restored = FerrovecCore.fromBytes(bytes);
 > The `js/` package wraps this with automatic embedding via transformers.js
 > (**M3**), OPFS persistence (**M4**), and cross-tab leader election (**M6**), so the browser API becomes:
 > `const db = await Ferrovec.open('notes'); await db.insert(text); const hits = await db.query('…', 5);`
-> — live on npm as `0.3.2`.
+> — live on npm as `0.3.3`.
 
 To smoke-test WASM compatibility without packaging:
 
@@ -190,15 +186,15 @@ cargo build --target wasm32-unknown-unknown
 
 | | Milestone | Status |
 | --- | --- | --- |
-| **M1** | Pure-Rust HNSW core | ✅ `0.3.2` |
-| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ `0.3.2` |
-| **—** | `compact()` / `clear()` compaction | ✅ `0.3.2` |
-| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.2` |
-| **M4** | OPFS-backed persistence (survives reloads) | ✅ `0.3.2` |
-| **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.3.2` |
-| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.2` |
+| **M1** | Pure-Rust HNSW core | ✅ `0.3.3` |
+| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ `0.3.3` |
+| **—** | `compact()` / `clear()` compaction | ✅ `0.3.3` |
+| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.3` |
+| **M4** | OPFS-backed persistence (survives reloads) | ✅ `0.3.3` |
+| **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.3.3` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.3` |
 
-> Both registries are published at **`0.3.2`** — crates.io (Rust core) and npm (browser package).
+> Both registries are published at **`0.3.3`** — crates.io (Rust core) and npm (browser package).
 
 ## Design notes
 

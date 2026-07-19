@@ -2,11 +2,9 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/ferrovec"><img alt="npm" src="https://img.shields.io/npm/v/ferrovec?logo=npm&label=npm&color=CB3837" /></a>
-  <a href="https://www.npmjs.com/package/ferrovec"><img alt="npm downloads" src="https://img.shields.io/npm/dm/ferrovec?label=downloads" /></a>
-  <a href="https://bundlephobia.com/package/ferrovec"><img alt="bundle size" src="https://img.shields.io/bundlephobia/minzip/ferrovec?label=min%2Bgzip&color=5B48D8" /></a>
+  <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-~33%20KB%20gzip-5B48D8" /></a>
   <a href="https://crates.io/crates/ferrovec"><img alt="Rust core on crates.io" src="https://img.shields.io/crates/v/ferrovec?logo=rust&label=rust%20core&color=C13A15" /></a>
   <a href="https://github.com/singhpratech/ferrovec/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/ferrovec" /></a>
-  <a href="https://github.com/singhpratech/ferrovec"><img alt="GitHub stars" src="https://img.shields.io/github/stars/singhpratech/ferrovec?logo=github&color=5B48D8" /></a>
 </p>
 
 Text-in vector search for the browser: [transformers.js](https://github.com/huggingface/transformers.js)
@@ -15,7 +13,7 @@ embeddings over a Rust/wasm HNSW core, running on a dedicated Web Worker, with
 
 You give it text. It embeds, indexes, and searches — off the main thread.
 
-**`0.3.2`** — the three-line browser API (embeddings + OPFS persistence), now
+**`0.3.3`** — the three-line browser API (embeddings + OPFS persistence), now
 **safe across multiple tabs** via single-writer leader election.
 · [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Live demo**](https://singhpratech.github.io/ferrovec/demo.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
 
@@ -98,7 +96,7 @@ coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
 
 Opening the **same store name in two tabs** used to make the second tab silently
 degrade to a private in-memory copy — the two would diverge and the second tab's
-writes never reached disk. As of `0.3.2` ferrovec runs **single-writer leader
+writes never reached disk. As of `0.3.3` ferrovec runs **single-writer leader
 election** so multiple tabs safely share one persistent store:
 
 ```ts
@@ -198,11 +196,11 @@ The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 
 | | Milestone | Status |
 | --- | --- | --- |
-| **M1–M2** | Rust HNSW core + WASM boundary + SIMD | ✅ `0.3.2` |
-| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.2` |
-| **M4** | OPFS persistence (survives reloads) | ✅ `0.3.2` |
-| **M5** | Three-line browser API on npm | ✅ `0.3.2` |
-| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.2` |
+| **M1–M2** | Rust HNSW core + WASM boundary + SIMD | ✅ `0.3.3` |
+| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.3` |
+| **M4** | OPFS persistence (survives reloads) | ✅ `0.3.3` |
+| **M5** | Three-line browser API on npm | ✅ `0.3.3` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.3` |
 
 The pure-Rust HNSW core is published separately on [crates.io](https://crates.io/crates/ferrovec).
 
