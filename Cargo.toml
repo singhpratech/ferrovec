@@ -1,8 +1,8 @@
 [package]
 name = "ferrovec"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
-description = "A tiny, dependency-light HNSW vector index for approximate nearest-neighbor search — built to compile to WebAssembly."
+description = "A durable, incremental HNSW vector store built to compile to WebAssembly — the in-browser index that persists to OPFS and stays consistent across tabs. Also a plain native crate."
 license = "MIT"
 repository = "https://github.com/singhpratech/ferrovec"
 homepage = "https://singhpratech.github.io/ferrovec/"

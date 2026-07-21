@@ -8,7 +8,7 @@
   <img src="https://raw.githubusercontent.com/singhpratech/ferrovec/main/docs/assets/cover.jpg" alt="ferrovec — a Milky Way galaxy with an HNSW vector-search graph woven through it, a triangle at its core" width="840" />
 </p>
 
-**A tiny, dependency-light [HNSW](https://arxiv.org/abs/1603.09320) vector index for approximate nearest-neighbor search — built to compile to WebAssembly.**
+**The in-browser vector store that _remembers_.** A Rust→WASM [HNSW](https://arxiv.org/abs/1603.09320) engine that persists to disk (OPFS) and stays consistent across tabs — so semantic search survives a reload instead of rebuilding from scratch every time.
 
 <p align="center">
   <a href="https://crates.io/crates/ferrovec"><img alt="crates.io" src="https://img.shields.io/crates/v/ferrovec?logo=rust&label=crates.io&color=C13A15" /></a>
@@ -18,16 +18,33 @@
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/crates/l/ferrovec" /></a>
 </p>
 
-The winning WebAssembly apps never asked anyone to switch languages — they put a Rust engine inside and a plain API outside. `ferrovec` brings that pattern to semantic search: a fast nearest-neighbor core in Rust, so you can run private, offline vector search anywhere — in the browser, on the edge, or on a server.
+Most in-browser vector libraries hand you an *in-memory* index: fast to query, but it evaporates on reload and diverges the moment a second tab opens. `ferrovec` is the one built to be **durable and shared** — the HNSW graph lives on disk in the browser's Origin Private File System, and a single-writer leader election keeps every tab reading and writing one consistent store. Private, offline, survives the refresh. You never write Rust; you never run a server.
 
-- 🦀 **Rust core** — a hand-rolled HNSW graph, the same algorithm behind Pinecone, Weaviate, and Qdrant.
-- 🪶 **Featherweight** — `serde` + `postcard` are the *only* dependencies. The WASM build is ~33 KB gzipped.
-- 🔒 **No `unsafe`** outside the audited SIMD kernel (`#![deny(unsafe_code)]` crate-wide), and **no system randomness** (a deterministic seeded splitmix64 PRNG) — so it's happy on `wasm32-unknown-unknown` with no shims.
-- ⚡ **SIMD-accelerated** distance kernels on `wasm32 + simd128`, with a scalar reference fallback everywhere else.
-- ➕ **Incremental** upsert-style inserts and tombstoning removals — no rebuild-the-whole-index penalty.
-- 💾 **Portable** — compact binary (de)serialization with a versioned header; the same bytes reload natively or in the browser.
+- 💾 **Durable by default** — the index persists to OPFS and rehydrates on `open()`. Reload the tab and your vectors are already there — no re-embedding, no rebuild. *(Most browser vector libs are in-memory only.)*
+- 🪟 **Cross-tab consistent** — single-writer leader election (Web Locks + BroadcastChannel) so many tabs share one store instead of silently diverging. *(No other in-browser vector lib ships this today.)*
+- ➕ **Incremental** — upsert-style inserts, tombstoning removals, and in-place `compact()`; add one vector without rebuilding the whole index.
+- 🦀 **Real HNSW, in Rust** — a hand-rolled Hierarchical Navigable Small World graph, the same algorithm behind Pinecone, Weaviate, and Qdrant — not brute force.
+- 🪶 **Featherweight & shim-free** — `serde` + `postcard` are the *only* dependencies; the WASM core is ~33 KB gzipped, with no `getrandom` (deterministic splitmix64 PRNG) and no threads, so it's happy on bare `wasm32-unknown-unknown`.
+- ⚡ **SIMD-accelerated** distance on `wasm32 + simd128` with a scalar fallback; `#![deny(unsafe_code)]` everywhere outside the audited kernel. Portable versioned byte format reloads identically native or in-browser.
 
-> **Status — the roadmap is complete, and both registries are on `0.3.3`.** crates.io `0.3.3` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.3.3` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), and cross-tab single-writer leader election (**M6**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+> **Status — the roadmap is complete, and both registries are on `0.3.4`.** crates.io `0.3.4` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.3.4` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), and cross-tab single-writer leader election (**M6**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+
+## How ferrovec is different
+
+In-browser vector search is a **crowded space** in 2026 — and this section is here to be honest about it. Plenty of libraries now put an HNSW index in the browser, several of them Rust→WASM like this one (altor-vec, EdgeVec, VecLite, ruvector). What almost none of them do is **remember**: they're in-memory engines — load vectors, query, and on the next reload you start over. Persistence and multi-tab consistency are left to you.
+
+ferrovec's wedge is exactly that missing half — **durability and consistency**:
+
+| | Engine | Index | Incremental | Persists in-browser | Cross-tab safe |
+| --- | --- | --- | --- | --- | --- |
+| **ferrovec** | Rust/WASM | **HNSW** | ✅ | ✅ **OPFS, built-in** | ✅ **leader election** |
+| altor-vec | Rust/WASM | HNSW | ✅ | ❌ | ❌ |
+| EdgeVec / VecLite / ruvector | Rust/WASM | HNSW | ✅ | ❌ in-memory | ❌ |
+| EntityDB | JS + WASM | brute-force | ✅ | ✅ IndexedDB | ❌ |
+| voy | Rust/WASM | kd-tree | ❌ rebuild | ❌ app-managed | ❌ |
+| Orama | TypeScript | brute-force | ✅ | ❌ serialize only | ❌ |
+
+*Landscape as surveyed July 2026; this field moves fast, so treat other projects' rows as directional and check their latest.* If all you need is a fast in-memory ANN for a single page view, several of these are excellent and lighter than ferrovec. Reach for ferrovec when the index has to **outlive the page** and **stay correct across tabs** — a notes app, an offline PWA, or "chat with your docs" that shouldn't re-embed everything on every visit.
 
 ---
 
@@ -174,7 +191,7 @@ const restored = FerrovecCore.fromBytes(bytes);
 > The `js/` package wraps this with automatic embedding via transformers.js
 > (**M3**), OPFS persistence (**M4**), and cross-tab leader election (**M6**), so the browser API becomes:
 > `const db = await Ferrovec.open('notes'); await db.insert(text); const hits = await db.query('…', 5);`
-> — live on npm as `0.3.3`.
+> — live on npm as `0.3.4`.
 
 To smoke-test WASM compatibility without packaging:
 
@@ -186,15 +203,15 @@ cargo build --target wasm32-unknown-unknown
 
 | | Milestone | Status |
 | --- | --- | --- |
-| **M1** | Pure-Rust HNSW core | ✅ `0.3.3` |
-| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ `0.3.3` |
-| **—** | `compact()` / `clear()` compaction | ✅ `0.3.3` |
-| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.3` |
-| **M4** | OPFS-backed persistence (survives reloads) | ✅ `0.3.3` |
-| **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.3.3` |
-| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.3` |
+| **M1** | Pure-Rust HNSW core | ✅ `0.3.4` |
+| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ `0.3.4` |
+| **—** | `compact()` / `clear()` compaction | ✅ `0.3.4` |
+| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.4` |
+| **M4** | OPFS-backed persistence (survives reloads) | ✅ `0.3.4` |
+| **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.3.4` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.4` |
 
-> Both registries are published at **`0.3.3`** — crates.io (Rust core) and npm (browser package).
+> Both registries are published at **`0.3.4`** — crates.io (Rust core) and npm (browser package).
 
 ## Design notes
 

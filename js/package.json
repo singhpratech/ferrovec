@@ -1,8 +1,8 @@
 {
   "name": "ferrovec",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
-  "description": "Text-in vector search: transformers.js embeddings over a wasm HNSW core, off a dedicated Web Worker, with OPFS persistence.",
+  "description": "The in-browser vector store that remembers: transformers.js embeddings over a Rust/wasm HNSW core, persisted to OPFS and kept consistent across tabs. Three-line API.",
   "license": "MIT",
   "author": "singhpratech",
   "homepage": "https://singhpratech.github.io/ferrovec/",
