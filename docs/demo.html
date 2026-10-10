@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ferrovec — live in-browser semantic search demo</title>
+<title>ferrovec — live demo: search, then make it remember</title>
 <meta name="description" content="A self-contained demo: the real ferrovec Rust/WASM HNSW core running semantic vector search entirely in your browser tab — no server, no network." />
 <meta property="og:title" content="ferrovec — live in-browser semantic search demo" />
 <meta property="og:description" content="The real ferrovec Rust/WASM core running semantic vector search entirely in your browser tab — no server, no network." />
@@ -163,15 +163,128 @@
   footer .row { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; align-items: center; }
   .banner { background: var(--rust-soft); color: var(--rust); border: 1px solid color-mix(in srgb, var(--rust) 30%, transparent); border-radius: 10px; padding: .7rem .9rem; font-size: .85rem; margin: 1rem 0 0; display: none; }
   .banner.show { display: block; }
+
+  /* ---- notebook section (part two of the demo): tokens and rules scoped to #notebook ---- */
+  #notebook { --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #8B8478;
+    --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
+    --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4; --wasm: #5B48D8; --wasm-soft: #E3DFF7;
+    --good: #2E6B3C; --good-soft: #DBE9DD; --warn: #8A6410; --warn-soft: #F3E7C9; --code-bg: #EBE7DE;
+    --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+    --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+    --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
+    --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --warn-soft: #33290F; --code-bg: #1E1A15; } }
+  :root[data-theme="dark"] #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+    --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+    --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
+    --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --warn-soft: #33290F; --code-bg: #1E1A15; }
+  #notebook {
+    margin-top: 3.2rem; padding-top: 2.4rem; border-top: 1px solid var(--line); color: var(--ink); font-family: var(--serif); font-size: 1.05rem; line-height: 1.55;
+    max-width: 46rem;
+    a { color: var(--accent); }
+    [hidden] { display: none !important; }
+    .nb-eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0 0 0.6rem; }
+    h2.nb-title { font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.08; margin: 0 0 0.8rem; letter-spacing: -0.01em; text-wrap: balance; font-family: var(--serif); }
+    .nb-lede { font-size: 1.12rem; color: var(--ink-soft); margin: 0; max-width: 40rem; }
+    .nb-lede b { color: var(--ink); }
+  .mono { font-family: var(--mono); }
+  .wrap { max-width: 46rem; margin: 0 auto; }
+
+  /* top bar, same bones as the site */
+
+  .nb-eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0 0 0.6rem; }
+  .nb-lede { font-size: 1.12rem; color: var(--ink-soft); margin: 0; max-width: 40rem; }
+  .nb-lede b { color: var(--ink); }
+  .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; margin-top: 1.3rem; }
+  .btn.big { font-size: 0.95rem; padding: 0.8rem 1.3rem; }
+  .cta-note { font-family: var(--mono); font-size: 0.75rem; color: var(--ink-faint); flex-basis: 100%; }
+
+  /* status strip */
+  .strip { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; align-items: center; font-family: var(--mono); font-size: 0.78rem; color: var(--ink-soft); padding-block: 0.9rem; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .strip b { color: var(--ink); font-weight: 500; }
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); }
+  .pill.leader { color: var(--good); background: var(--good-soft); border-color: transparent; }
+  .pill.follower { color: var(--wasm); background: var(--wasm-soft); border-color: transparent; }
+  .pill.off { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  /* receipt: what came back after a disaster */
+  .receipt { margin-top: 1.4rem; padding: 1rem 1.2rem; border-radius: 8px; border: 1px solid var(--good); background: var(--good-soft); }
+  .receipt.bad { border-color: var(--accent); background: var(--accent-soft); }
+  .receipt.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .receipt h2 { margin: 0 0 0.4rem; font-size: 1.25rem; }
+  .receipt p { margin: 0.25rem 0; }
+  .receipt .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.6rem 1rem; margin-top: 0.8rem; font-family: var(--mono); font-size: 0.8rem; }
+  .receipt .facts div span { display: block; color: var(--ink-soft); font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; }
+  .receipt .facts div b { font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .receipt.bad .facts b.lost { color: var(--accent); }
+  .receipt .fine { color: var(--ink-soft); font-size: 0.92rem; margin-top: 0.7rem; }
+
+  /* composer + notes */
+  section { margin-top: 2.2rem; }
+  h2.sec { font-size: 1.35rem; margin: 0 0 0.3rem; }
+  .sub { color: var(--ink-soft); margin: 0 0 1rem; font-size: 0.98rem; }
+  .composer { display: flex; gap: 0.6rem; align-items: stretch; }
+  .composer input, .find input { flex: 1; min-width: 0; font: inherit; font-size: 1.02rem; padding: 0.7rem 0.9rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+  .composer input:focus-visible, .find input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--wasm); outline-offset: 2px; }
+  .btn { font-family: var(--mono); font-size: 0.85rem; padding: 0.65rem 1rem; border-radius: 6px; border: 1px solid transparent; cursor: pointer; white-space: nowrap; transition: transform 0.12s ease, background 0.2s; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:not(:disabled):hover { background: var(--accent-2); transform: translateY(-1px); }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn.ghost:not(:disabled):hover { border-color: var(--ink-faint); }
+  .btn.danger { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+  .btn.danger:not(:disabled):hover { background: var(--accent-soft); }
+  ul.notes { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+  ul.notes li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem 1rem; align-items: baseline; padding: 0.55rem 0.8rem; border-left: 3px solid var(--line); background: var(--panel); border-radius: 0 6px 6px 0; }
+  ul.notes li.fresh { border-left-color: var(--good); }
+  ul.notes li .txt { min-width: 0; overflow-wrap: anywhere; }
+  ul.notes li .meta { font-family: var(--mono); font-size: 0.7rem; color: var(--ink-faint); white-space: nowrap; }
+  ul.notes li .meta b { color: var(--good); font-weight: 500; }
+  .more { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-faint); margin-top: 0.6rem; }
+  .empty { color: var(--ink-faint); font-style: italic; margin-top: 1rem; }
+
+  /* break it */
+  .break { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.8rem; }
+  .card { padding: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); display: flex; flex-direction: column; gap: 0.6rem; }
+  .card h3 { margin: 0; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 0.92rem; flex: 1; }
+  .card .btn { align-self: flex-start; }
+  .toast { font-family: var(--mono); font-size: 0.8rem; color: var(--ink-soft); min-height: 1.4em; margin-top: 0.8rem; }
+  .toast.busy { color: var(--accent); }
+  .toast.ok { color: var(--good); }
+
+  /* find */
+  .find { display: flex; gap: 0.6rem; }
+  ol.hits { margin: 0.9rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.35rem; }
+  ol.hits li { display: grid; grid-template-columns: 3.6rem minmax(0, 1fr); gap: 0.8rem; align-items: baseline; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); }
+  ol.hits li .sc { font-family: var(--mono); font-size: 0.78rem; color: var(--wasm); font-variant-numeric: tabular-nums; }
+  ol.hits li .id { font-family: var(--mono); font-size: 0.7rem; color: var(--ink-faint); margin-left: 0.5rem; }
+
+  /* under the hood */
+  .files { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; gap: 0.5rem 0.9rem; align-items: center; font-family: var(--mono); font-size: 0.78rem; }
+  .files .name { color: var(--ink); }
+  .files .bar { height: 10px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .files .bar i { display: block; height: 100%; background: var(--wasm); width: 0; transition: width 0.3s ease; }
+  .files .bar i.snap { background: var(--accent); }
+  .files .bar i.torn { background: repeating-linear-gradient(45deg, var(--accent), var(--accent) 4px, transparent 4px, transparent 8px); }
+  .files .val { color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .files .val b { color: var(--ink); font-weight: 500; }
+  .hood p { color: var(--ink-soft); font-size: 0.95rem; margin: 0.9rem 0 0; }
+  pre { margin: 1rem 0 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.9rem 1rem; font-family: var(--mono); font-size: 0.8rem; line-height: 1.6; overflow-x: auto; }
+  pre .c { color: var(--ink-faint); } pre .k { color: var(--accent); } pre .s { color: var(--good); }
+
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap bar">
-    <span class="brand"><img class="tb-logo" src="./assets/logo-256.png" alt="ferrovec logo" width="24" height="24" /><b>ferrovec</b><span class="tag">search demo</span></span>
+    <span class="brand"><img class="tb-logo" src="./assets/logo-256.png" alt="ferrovec logo" width="24" height="24" /><b>ferrovec</b><span class="tag">live demo</span></span>
     <span class="spacer"></span>
     <a class="ghost" href="./index.html">&larr; Overview</a>
-    <a class="ghost" href="./remember.html">Notebook demo &rarr;</a>
+    <a class="ghost" href="#notebook">&darr; Notebook</a>
     <a class="ghost" href="https://github.com/singhpratech/ferrovec" target="_blank" rel="noopener">GitHub</a>
     <button class="ghost" id="theme" type="button" aria-label="Toggle theme">&#9788; Theme</button>
   </div>
@@ -250,6 +363,83 @@
 <span class="kw">await</span> db.insert(<span class="st">'the cat curled up in the sun'</span>); <span class="cm">// embed + index</span>
 <span class="kw">const</span> hits = <span class="kw">await</span> db.query(<span class="st">'a sleepy kitten'</span>, 5); <span class="cm">// &rarr; ranked, nearest-first</span></code></pre>
   </section>
+<section id="notebook">
+<p class="nb-eyebrow">Part two · now make it remember</p>
+    <h2 class="nb-title">A notebook that remembers.</h2>
+    <p class="nb-lede">Write a few notes. Then <b>pull the plug</b> while it is still writing, or open it in a second tab. The notes are in the real ferrovec store: a Rust→WASM index written to this browser's private file system behind a checksummed write-ahead log. <b>What this page acknowledges, it keeps.</b></p>
+    <div class="cta">
+      <button class="btn primary big" type="button" id="plug-hero">Pull the plug now</button>
+      <button class="btn ghost big" type="button" id="tab2-hero">Open a second tab</button>
+      <span class="cta-note" id="cta-note">saves 25 notes and reloads mid-save, then shows what survived</span>
+    </div>
+  
+
+  <div class="strip" id="strip">
+    <span class="pill" id="role"><span class="dot"></span><span id="role-txt">opening…</span></span>
+    <span><b id="count">—</b> notes in the index</span>
+    <span>last open <b id="open-ms">—</b></span>
+    <span id="tabs-txt">1 tab</span>
+    <span id="embed-txt"></span>
+  </div>
+
+  <div id="receipt" role="status" aria-live="polite" hidden></div>
+
+  <section>
+    <h2 class="sec">Your notes</h2>
+    <p class="sub">Each save is acknowledged only after its log record is on disk. The time shown is how long that took.</p>
+    <form class="composer" id="composer">
+      <input id="note" type="text" placeholder="Write a note and press Enter…" autocomplete="off" maxlength="400" />
+      <button class="btn primary" type="submit" id="save">Save</button>
+    </form>
+    <ul class="notes" id="notes"></ul>
+    <p class="more" id="more"></p>
+  </section>
+
+  <section>
+    <h2 class="sec">Now try to lose them</h2>
+    <p class="sub">Each of these does something real to this tab or its files. The page measures what comes back.</p>
+    <div class="break">
+      <div class="card">
+        <h3>Pull the plug mid-write</h3>
+        <p>Saves 25 notes as fast as it can and reloads the tab partway through, with no close and no flush. The reload lands while a save is in flight.</p>
+        <button class="btn danger" type="button" id="plug">Pull the plug</button>
+      </div>
+      <div class="card">
+        <h3>Crash during a checkpoint</h3>
+        <p>Checkpoints, saves 3 more notes, then reloads and leaves a half-written checkpoint file behind, the way a tab killed mid-checkpoint does.</p>
+        <button class="btn danger" type="button" id="crash">Crash it</button>
+      </div>
+      <div class="card">
+        <h3>Open a second tab</h3>
+        <p>Both tabs share one store. One is elected leader; the other proxies through it. Close the leader and watch this tab take over.</p>
+        <button class="btn ghost" type="button" id="tab2">Open second tab</button>
+      </div>
+    </div>
+    <p class="toast" id="toast" role="status" aria-live="polite"></p>
+    <p class="more"><a href="#" id="reset">Start over</a> deletes the store and the notes above.</p>
+  </section>
+
+  <section>
+    <h2 class="sec">Find a note</h2>
+    <p class="sub" id="find-sub">Nearest-neighbour search over the index, in this tab. With the instant embedder, search by words from the note; for meaning-based search see the <a href="./demo.html">search demo</a>, which runs MiniLM vectors.</p>
+    <form class="find" id="findform">
+      <input id="q" type="text" placeholder="a few words from a note…" autocomplete="off" />
+      <button class="btn ghost" type="submit" id="find">Find</button>
+    </form>
+    <ol class="hits" id="hits"></ol>
+  </section>
+
+  <section class="hood">
+    <h2 class="sec">Under the hood</h2>
+    <p class="sub">The store's files in OPFS, read by this page while the store is open. Two snapshot slots alternate; the log holds everything since the newest one.</p>
+    <div class="files" id="files"></div>
+    <p id="embed-note"></p>
+    <pre><span class="c">// The same three lines run this page (npm: ferrovec).</span>
+<span class="k">import</span> { Ferrovec } <span class="k">from</span> <span class="s">'ferrovec'</span>;
+<span class="k">const</span> db = <span class="k">await</span> Ferrovec.open(<span class="s">'notebook'</span>);   <span class="c">// worker + model + OPFS</span>
+<span class="k">await</span> db.insert(<span class="s">'call the dentist tuesday'</span>);  <span class="c">// resolves once it is on disk</span></pre>
+  </section>
+</section>
 </main>
 
 <footer>
@@ -871,6 +1061,432 @@ function renderResults(query, rows, ms) {
   });
 }
 
+boot();
+</script>
+<script type="module">
+import { Ferrovec } from './remember/index.js';
+
+const $ = (id) => document.getElementById(id);
+const nf = (n) => Number(n).toLocaleString('en-US');
+const ms = (t) => `${Math.round(t)} ms`;
+const sleep = (t) => new Promise((r) => setTimeout(r, t));
+const rand = (n) => Math.random().toString(36).slice(2, 2 + n);
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+/* ---- which embedder: instant hashed (default) or the real MiniLM (#minilm) ---- */
+const MINILM = location.hash === '#minilm';
+const MODEL = MINILM ? 'Xenova/all-MiniLM-L6-v2' : 'hashed-trigram-v1';
+const STORE = MINILM ? 'notebook-minilm' : 'notebook';
+const STORE_DIR = STORE;
+
+/* ---- session storage, always guarded ---- */
+const K = 'fv-notebook:';
+const ss = {
+  get(k, d) { try { const v = sessionStorage.getItem(K + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { sessionStorage.setItem(K + k, JSON.stringify(v)); } catch { /* unavailable */ } },
+  del(k) { try { sessionStorage.removeItem(K + k); } catch { /* unavailable */ } },
+};
+
+/* ---- starter notes ---- */
+const SEED = [
+  'Call the dentist on Tuesday to move the cleaning appointment.',
+  'Bridge 14, north abutment: hairline crack in the bearing seat. Photographed. Check again next month.',
+  'Parental leave is 16 weeks fully paid for the primary caregiver.',
+  'Ticket 4412: password reset email lands in spam for outlook.com addresses.',
+  'Sourdough: 78% hydration, 12 h cold proof, bake at 240 for 20 min with the lid on.',
+  'Museum kiosk: lockers are on the lower level next to the cloakroom.',
+  'Read later: the chapter on write-ahead logs in Designing Data-Intensive Applications.',
+  'Gift idea for Maya: a hardcover sketchbook and watercolour pencils.',
+];
+const PHRASES = ['the ferry leaves at six', 'buy lamp oil and rope', 'rain again on the north field', 'meeting moved to thursday', 'the kettle needs descaling', 'tomatoes in by the first frost', 'ask about the invoice currency', 'knee felt fine on the long run', 'book the coast trip for october', 'the signal box is painted green'];
+
+/* ---- state ---- */
+let db = null;
+let busy = false;
+let lastRole = null;
+const tabId = rand(4);
+
+/* ---- on-disk inspection, from the main thread (getFile works while the worker holds the handles) ---- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(...parts) { let c = 0xffffffff; for (const p of parts) for (let i = 0; i < p.length; i++) c = CRC_T[(c ^ p[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+async function storeDir() {
+  try { const root = await navigator.storage.getDirectory(); return await (await root.getDirectoryHandle('ferrovec')).getDirectoryHandle(STORE_DIR); } catch { return null; }
+}
+async function readFile(dir, name) {
+  try { return new Uint8Array(await (await (await dir.getFileHandle(name)).getFile()).arrayBuffer()); } catch { return null; }
+}
+/** FVS2 snapshot header: big-endian; layout at the top of js/src/snapshot.ts. */
+function parseSlot(name, b) {
+  if (b === null) return { name, size: 0, valid: false, reason: 'missing' };
+  if (b.length === 0) return { name, size: 0, valid: false, reason: 'empty' };
+  if (b.length < 32) return { name, size: b.length, valid: false, reason: 'too short' };
+  const v = new DataView(b.buffer, b.byteOffset, b.length);
+  if (v.getUint32(0, false) !== 0x46565332) return { name, size: b.length, valid: false, reason: 'bad magic' };
+  const seq = Number(v.getBigUint64(8, false));
+  const total = 32 + v.getUint32(16, false) + v.getUint32(20, false) + v.getUint32(24, false);
+  if (total !== b.length) return { name, size: b.length, valid: false, reason: 'torn', seq };
+  if (crc32(b.subarray(0, 28), b.subarray(32)) !== v.getUint32(28, false)) return { name, size: b.length, valid: false, reason: 'bad CRC', seq };
+  let count = null;
+  try { count = JSON.parse(new TextDecoder().decode(b.subarray(32, 32 + v.getUint32(16, false)))).count; } catch { /* unknown */ }
+  return { name, size: b.length, valid: true, seq, count };
+}
+/** FVW2 log header: little-endian; layout at the top of js/src/wal.ts. */
+function parseWal(b) {
+  if (b === null || b.length < 26) return { size: b ? b.length : 0, base: null, records: 0, tail: 0 };
+  const v = new DataView(b.buffer, b.byteOffset, b.length);
+  const magic = String.fromCharCode(b[0], b[1], b[2], b[3]);
+  const modelLen = v.getUint16(20, true);
+  const hdr = 22 + modelLen + 4;
+  if (magic !== 'FVW2' || b.length < hdr || crc32(b.subarray(0, 22 + modelLen)) !== v.getUint32(22 + modelLen, true)) {
+    return { size: b.length, base: null, records: 0, tail: b.length, bad: true };
+  }
+  const base = Number(v.getBigUint64(8, true));
+  let off = hdr, records = 0;
+  while (off + 8 <= b.length) {
+    const len = v.getUint32(off, true);
+    if (len === 0 || off + 8 + len > b.length) break;
+    if (crc32(b.subarray(off + 8, off + 8 + len)) !== v.getUint32(off + 4, true)) break;
+    records++; off += 8 + len;
+  }
+  return { size: b.length, base, records, tail: b.length - off };
+}
+async function inspect() {
+  const dir = await storeDir();
+  if (!dir) return null;
+  const [a, b, w] = await Promise.all([readFile(dir, 'slot-a.bin'), readFile(dir, 'slot-b.bin'), readFile(dir, 'wal.bin')]);
+  const A = parseSlot('slot-a', a), B = parseSlot('slot-b', b), wal = parseWal(w);
+  let newest = null;
+  for (const s of [A, B]) if (s.valid && (!newest || s.seq > newest.seq)) newest = s;
+  return { A, B, wal, newest, raw: { 'slot-a': a, 'slot-b': b } };
+}
+function renderFiles(info) {
+  const el = $('files');
+  if (!info) { el.textContent = 'no files yet'; return; }
+  const max = Math.max(info.A.size, info.B.size, info.wal.size, 1);
+  const row = (name, size, cls, text) => `<span class="name">${name}</span><span class="bar"><i class="${cls}" style="width:${Math.max(1, (100 * size) / max).toFixed(1)}%"></i></span><span class="val">${text}</span>`;
+  const slot = (s) => row(s.name + '.bin', s.size, s.valid ? 'snap' : (s.size ? 'torn' : ''), s.valid ? `<b>${nf(s.size)} B</b> · checkpoint #${s.seq} · ${nf(s.count)} docs` : s.size ? `<b>${nf(s.size)} B</b> · ${s.reason} (ignored)` : 'empty');
+  el.innerHTML = slot(info.A) + slot(info.B) + row('wal.bin', info.wal.size, '', info.wal.bad ? `<b>${nf(info.wal.size)} B</b> · unreadable` : `<b>${nf(info.wal.size)} B</b> · ${nf(info.wal.records)} records since #${info.wal.base ?? 0}${info.wal.tail ? ` · ${nf(info.wal.tail)} B torn` : ''}`);
+}
+
+/* ---- a throwaway module worker that writes a store file (sync access handle, like the store itself) ---- */
+const FILE_WORKER = `self.onmessage = async (e) => {
+  const { dir, file, bytes } = e.data;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const d = await (await root.getDirectoryHandle('ferrovec')).getDirectoryHandle(dir);
+    const fh = await d.getFileHandle(file, { create: true });
+    let h = null;
+    for (let i = 0; ; i++) { try { h = await fh.createSyncAccessHandle(); break; } catch (err) { if (i >= 120) throw err; await new Promise((r) => setTimeout(r, 50)); } }
+    h.truncate(0); h.write(bytes, { at: 0 }); h.flush(); const size = h.getSize(); h.close();
+    self.postMessage({ ok: true, size });
+  } catch (err) { self.postMessage({ ok: false, message: String(err && err.message || err) }); }
+};`;
+function writeStoreFile(file, bytes) {
+  const url = URL.createObjectURL(new Blob([FILE_WORKER], { type: 'text/javascript' }));
+  const w = new Worker(url, { type: 'module' });
+  return new Promise((resolve, reject) => {
+    w.onmessage = (e) => { w.terminate(); URL.revokeObjectURL(url); e.data.ok ? resolve(e.data) : reject(new Error(e.data.message)); };
+    w.onerror = (e) => { w.terminate(); URL.revokeObjectURL(url); reject(new Error(e.message || 'file worker failed')); };
+    w.postMessage({ dir: STORE_DIR, file, bytes });
+  });
+}
+
+/* ---- store ---- */
+async function openStore() {
+  const t0 = performance.now();
+  db = await Ferrovec.open(STORE, { model: MODEL });
+  const t = performance.now() - t0;
+  $('open-ms').textContent = ms(t);
+  return t;
+}
+const noteId = () => `n-${Date.now().toString(36)}-${rand(3)}`;
+const noteTime = (id) => { const m = /^n-([0-9a-z]+)-/.exec(id); return m ? parseInt(m[1], 36) : 0; };
+async function listAll() {
+  const n = await db.size();
+  if (n === 0) return [];
+  let hits;
+  if (typeof db.list === 'function') {
+    hits = [];
+    for (let offset = 0; offset < n; offset += 1000) hits.push(...(await db.list({ offset, limit: 1000 })));
+  } else {
+    hits = await db.query('note', n); // older bundle: the n nearest neighbours of any probe is every document
+  }
+  return hits.map((h) => ({ id: h.id, text: h.text ?? '' })).sort((x, y) => noteTime(y.id) - noteTime(x.id) || (x.id < y.id ? 1 : -1));
+}
+async function verify(list) {
+  // The chaos harness's check: the note's own text must bring back its id.
+  const lost = [];
+  for (const { id, text } of list) {
+    const top = await db.query(text, 1);
+    if (top[0]?.id === id) continue;
+    const wide = await db.query(text, 10);
+    if (!wide.some((h) => h.id === id)) lost.push(id);
+  }
+  return lost;
+}
+
+/* ---- rendering ---- */
+const fresh = new Map(); // id -> ack ms, for notes saved in this page life
+async function renderNotes() {
+  if (!db) return;
+  let all;
+  try { all = await listAll(); } catch { return; }
+  $('count').textContent = nf(all.length);
+  const shown = all.slice(0, 12);
+  $('notes').replaceChildren(...shown.map(({ id, text }) => {
+    const li = document.createElement('li');
+    if (fresh.has(id)) li.className = 'fresh';
+    const t = document.createElement('span'); t.className = 'txt'; t.textContent = text;
+    const m = document.createElement('span'); m.className = 'meta';
+    const ack = fresh.get(id);
+    m.innerHTML = ack !== undefined ? `<b>on disk in ${ms(ack)}</b>` : (id.startsWith('seed') ? 'starter note' : `on disk`);
+    li.append(t, m);
+    return li;
+  }));
+  $('more').textContent = all.length > shown.length ? `and ${nf(all.length - shown.length)} more in the index` : '';
+  const dirInfo = await inspect();
+  renderFiles(dirInfo);
+}
+function toast(text, cls = '') { const t = $('toast'); t.textContent = text; t.className = `toast ${cls}`; }
+function receipt(kind, html) { const r = $('receipt'); r.className = `receipt ${kind}`; r.innerHTML = html; r.hidden = false; $('cta-note').textContent = 'run it again: every run picks a new random moment to reload'; r.scrollIntoView({ block: 'nearest' }); }
+function setBusy(b) {
+  busy = b;
+  for (const id of ['save', 'plug', 'plug-hero', 'crash', 'tab2', 'tab2-hero', 'find', 'note', 'q']) $(id).disabled = b || !db;
+}
+function tickRole() {
+  const role = db ? db.role : null;
+  const pill = $('role');
+  pill.className = `pill ${role ?? 'off'}`;
+  $('role-txt').textContent = role ? `this tab is ${role}` : 'store closed';
+  if (role && lastRole && role !== lastRole) onRoleChange(lastRole, role);
+  if (role) lastRole = role;
+}
+
+/* ---- other tabs (page-level channel; the store has its own) ---- */
+let chan = null;
+try { chan = new BroadcastChannel('ferrovec-notebook-page'); } catch { /* unsupported */ }
+const peers = new Map();
+let lastBye = null;
+const post = (m) => { try { chan?.postMessage({ ...m, tab: tabId }); } catch { /* closed */ } };
+if (chan) chan.onmessage = (e) => {
+  const m = e.data; if (!m || m.tab === tabId) return;
+  peers.set(m.tab, Date.now());
+  if (m.type === 'hello') post({ type: 'here' });
+  if (m.type === 'bye') { peers.delete(m.tab); lastBye = { tab: m.tab, role: m.role, at: Date.now() }; }
+  if (m.type === 'saved') { void renderNotes(); toast(`The other tab saved a note; it is in this tab's index too.`, 'ok'); }
+  updateTabs();
+};
+addEventListener('pagehide', () => post({ type: 'bye', role: db?.role ?? null }));
+function updateTabs() {
+  const now = Date.now();
+  for (const [t, seen] of peers) if (now - seen > 15000) peers.delete(t);
+  const n = peers.size + 1;
+  $('tabs-txt').textContent = `${n} tab${n === 1 ? '' : 's'} open`;
+}
+setInterval(() => { post({ type: 'hello' }); updateTabs(); }, 5000);
+async function onRoleChange(from, to) {
+  if (from === 'follower' && to === 'leader') {
+    const after = lastBye && Date.now() - lastBye.at < 30000 ? ` ${ms(Date.now() - lastBye.at)} after the other tab closed` : '';
+    toast(`This tab became leader${after}. It replayed the shared store and is now the writer.`, 'ok');
+    await renderNotes();
+  } else {
+    toast(`Role changed: ${from} → ${to}.`);
+  }
+}
+
+/* ---- save ---- */
+$('composer').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (busy || !db) return;
+  const text = $('note').value.trim();
+  if (!text) return;
+  setBusy(true);
+  try {
+    const id = noteId();
+    const t0 = performance.now();
+    await db.insert(text, { id });
+    fresh.set(id, performance.now() - t0);
+    $('note').value = '';
+    post({ type: 'saved' });
+    await renderNotes();
+  } catch (err) {
+    toast(`Save failed: ${err.name}: ${err.message}`, 'busy');
+  } finally { setBusy(false); }
+});
+
+/* ---- pull the plug ---- */
+async function pullPlug() {
+  if (busy || !db) return;
+  setBusy(true);
+  const run = rand(3);
+  const killAfter = 4 + Math.floor(Math.random() * 17); // reload after ack #4..#20 of 25
+  const acked = [];
+  ss.set('pending', { kind: 'plug', run, killAfter, acked: [] });
+  toast('Saving 25 notes as fast as possible… the reload will land mid-save.', 'busy');
+  for (let i = 1; i <= 25; i++) {
+    const id = noteId();
+    const text = `Plug test ${run} #${i}: ${pick(PHRASES)}.`;
+    const p = db.insert(text, { id });
+    if (i === killAfter + 1) {
+      ss.set('pending', { kind: 'plug', run, killAfter, acked, inflight: { id, text, n: i } });
+      location.reload(); // no await, no close(), no flush()
+      await new Promise(() => {});
+    }
+    await p;
+    acked.push({ id, text });
+    ss.set('pending', { kind: 'plug', run, killAfter, acked }); // recorded the moment it is acknowledged
+  }
+}
+$('plug').addEventListener('click', pullPlug);
+$('plug-hero').addEventListener('click', pullPlug);
+
+/* ---- crash during a checkpoint ---- */
+$('crash').addEventListener('click', async () => {
+  if (busy || !db) return;
+  if (db.role === 'follower') { toast('This tab is a follower; the leader tab owns the files. Try it there, or close the other tab.', 'busy'); return; }
+  setBusy(true);
+  toast('Checkpointing, saving 3 notes into the log, then crashing…', 'busy');
+  await db.flush(); // checkpoint: the newest slot now holds everything so far
+  const before = await inspect();
+  const notes = [];
+  for (let i = 1; i <= 3; i++) {
+    const id = noteId();
+    const text = `Checkpoint crash test #${i}: ${pick(PHRASES)}.`;
+    await db.insert(text, { id });
+    notes.push({ id, text });
+  }
+  ss.set('pending', { kind: 'crash', notes, newest: before.newest?.name ?? null, seq: before.newest?.seq ?? null });
+  location.reload(); // no close(): the 3 notes live only in the log
+  await new Promise(() => {});
+});
+
+/* ---- second tab, start over ---- */
+function openSecondTab() {
+  window.open(location.href.split('#')[0] + (MINILM ? '#minilm' : ''), '_blank');
+  toast('Opened a second tab. It will join as a follower and proxy its saves through this one.');
+}
+$('tab2').addEventListener('click', openSecondTab);
+$('tab2-hero').addEventListener('click', openSecondTab);
+$('reset').addEventListener('click', async (e) => {
+  e.preventDefault();
+  if (busy) return;
+  setBusy(true);
+  try {
+    if (db) { await db.close(); db = null; }
+    await Ferrovec.destroy(STORE);
+    ss.del('pending');
+    fresh.clear();
+    $('receipt').hidden = true;
+    await openStore();
+    for (let i = 0; i < SEED.length; i++) await db.insert(SEED[i], { id: `seed-${String(i + 1).padStart(2, '0')}` });
+    toast('Store deleted and reseeded.', 'ok');
+    await renderNotes();
+  } catch (err) { toast(`Start over failed: ${err.name}: ${err.message}`, 'busy'); }
+  finally { setBusy(false); }
+});
+
+/* ---- find ---- */
+$('findform').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (busy || !db) return;
+  const q = $('q').value.trim(); if (!q) return;
+  setBusy(true);
+  try {
+    const t0 = performance.now();
+    const hits = await db.query(q, 5);
+    const t = performance.now() - t0;
+    $('hits').replaceChildren(...hits.map((h) => {
+      const li = document.createElement('li');
+      const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = h.score.toFixed(3);
+      const body = document.createElement('span'); body.textContent = h.text ?? '';
+      const id = document.createElement('span'); id.className = 'id'; id.textContent = h.id; body.append(id);
+      li.append(sc, body); return li;
+    }));
+    $('find-sub').textContent = `Top ${hits.length} of ${nf(await db.size())} in ${ms(t)}: embed, then an HNSW walk, in this tab.`;
+  } finally { setBusy(false); }
+});
+
+/* ---- boot ---- */
+async function boot() {
+  setBusy(true);
+  setInterval(tickRole, 300);
+  $('embed-txt').textContent = MINILM ? 'MiniLM embeddings' : 'instant hashed embeddings';
+  $('embed-note').innerHTML = MINILM
+    ? `Embeddings: <b>Xenova/all-MiniLM-L6-v2</b> through transformers.js, the package default (about 28 MB on first visit, cached after). <a href="./demo.html#notebook">Back to the instant embedder</a>.`
+    : `Embeddings here are a <b>hashed-trigram embedder</b> so the page loads with no download: finding a note by a few of its words works, finding "cat" by "kitten" does not. Everything else is the shipped code. The npm package embeds with MiniLM; <a href="#minilm" id="go-minilm">try this notebook with the real model</a> (about 28 MB once).`;
+  $('go-minilm')?.addEventListener('click', () => { setTimeout(() => location.reload(), 0); });
+  if (location.hash === '#notebook' || MINILM) document.getElementById('notebook').scrollIntoView();
+
+  const pending = ss.get('pending', null);
+  ss.del('pending');
+  const disk = await inspect();
+
+  // Crash during a checkpoint: leave the file a killed tab would leave, before the store reopens.
+  if (pending?.kind === 'crash' && disk?.newest) {
+    try {
+      const src = disk.raw[disk.newest.name];
+      const half = src.slice(0, Math.floor(src.length / 2));
+      new DataView(half.buffer).setBigUint64(8, BigInt(disk.newest.seq + 1), false); // the next checkpoint number
+      const target = disk.newest.name === 'slot-a' ? 'slot-b' : 'slot-a';
+      await writeStoreFile(`${target}.bin`, half);
+      pending.torn = { target, bytes: half.length, of: src.length };
+    } catch (err) { pending.stageError = `${err.name}: ${err.message}`; }
+  }
+
+  let openMs;
+  try {
+    openMs = await openStore();
+  } catch (err) {
+    receipt('bad', `<h2>The store refused to open.</h2><p class="mono">${err.name}: ${err.message}</p><p class="fine">ferrovec throws a typed error instead of serving a wrong or empty index. <a href="#" id="r-reset">Start over</a> deletes it.</p>`);
+    $('r-reset').addEventListener('click', (e) => { e.preventDefault(); $('reset').click(); });
+    $('embed-txt').textContent += MINILM ? ' · model load failed?' : '';
+    tickRole();
+    renderFiles(await inspect());
+    return;
+  }
+  if ((await db.size()) === 0) {
+    for (let i = 0; i < SEED.length; i++) await db.insert(SEED[i], { id: `seed-${String(i + 1).padStart(2, '0')}` });
+  }
+  await renderNotes();
+  setBusy(false);
+  post({ type: 'hello' });
+
+  if (pending?.kind === 'plug') {
+    const lost = await verify(pending.acked);
+    const replayed = disk?.wal.records ?? 0;
+    const inflightPresent = pending.inflight ? (await db.query(pending.inflight.text, 10)).some((h) => h.id === pending.inflight.id) : null;
+    const ok = lost.length === 0;
+    receipt(ok ? '' : 'bad', `
+      <h2>${ok ? 'Back. Nothing acknowledged was lost.' : 'Back, with losses.'}</h2>
+      <p>The reload hit during save #${pending.inflight?.n ?? pending.acked.length + 1} of 25. Every note this page had acknowledged before that was checked by querying its own text.</p>
+      <div class="facts">
+        <div><span>acknowledged</span><b>${pending.acked.length}</b></div>
+        <div><span>found</span><b>${pending.acked.length - lost.length}</b></div>
+        <div><span>lost</span><b class="lost">${lost.length}</b></div>
+        <div><span>reopened in</span><b>${ms(openMs)}</b></div>
+        <div><span>log replayed</span><b>${nf(replayed)} rec</b></div>
+        ${disk?.wal.tail ? `<div><span>torn tail cut</span><b>${nf(disk.wal.tail)} B</b></div>` : ''}
+      </div>
+      <p class="fine">Save #${pending.inflight?.n ?? '?'} was in flight and never acknowledged, so no promise covered it. This time it ${inflightPresent === null ? 'is unknown' : inflightPresent ? 'made it anyway' : 'did not make it'}. ${disk?.newest ? `Reopened from ${disk.newest.name}.bin (checkpoint #${disk.newest.seq}) plus the log.` : 'There was no checkpoint yet: everything came from the log.'}</p>`);
+  }
+  if (pending?.kind === 'crash') {
+    const lost = await verify(pending.notes);
+    const now = await inspect();
+    const ok = lost.length === 0 && !pending.stageError;
+    receipt(ok ? '' : pending.stageError ? 'warn' : 'bad', `
+      <h2>${pending.stageError ? 'Could not stage the crash.' : ok ? 'Back. The half-written checkpoint was ignored.' : 'Back, with losses.'}</h2>
+      ${pending.stageError ? `<p class="mono">${pending.stageError}</p>` : `<p>Before reopening, this page wrote ${nf(pending.torn.bytes)} of ${nf(pending.torn.of)} bytes of checkpoint #${pending.seq + 1} over ${pending.torn.target}.bin, which is what a tab killed mid-checkpoint leaves behind. Open saw a torn file, skipped it, loaded checkpoint #${pending.seq} from ${pending.newest}.bin and replayed the log on top.</p>`}
+      <div class="facts">
+        <div><span>notes in the log</span><b>${pending.notes.length}</b></div>
+        <div><span>found</span><b>${pending.notes.length - lost.length}</b></div>
+        <div><span>lost</span><b class="lost">${lost.length}</b></div>
+        <div><span>reopened in</span><b>${ms(openMs)}</b></div>
+      </div>
+      <p class="fine">${now && !now[pending.torn?.target === 'slot-a' ? 'A' : 'B']?.valid ? 'The torn file is still there, marked below; the next checkpoint simply overwrites it.' : 'The torn file has already been overwritten by a new checkpoint.'}</p>`);
+    await renderNotes();
+  }
+  tickRole();
+}
 boot();
 </script>
 </body>

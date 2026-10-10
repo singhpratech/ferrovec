@@ -21,13 +21,12 @@ thread, across reloads, across tabs. Nothing leaves the device.
 **safe across multiple tabs** via single-writer leader election, and now
 **crash-safe**: checksummed snapshots plus a write-ahead log, verified by a
 [published kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html).
-· [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Notebook demo**](https://singhpratech.github.io/ferrovec/remember.html) · [Search demo](https://singhpratech.github.io/ferrovec/demo.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
+· [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Live demo**](https://singhpratech.github.io/ferrovec/demo.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
 
-> **▶ [Notebook demo](https://singhpratech.github.io/ferrovec/remember.html)** — this package running a notebook
-> in your tab: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged
-> get lost. Opens instantly, no model download.
-> **▶ [Search demo](https://singhpratech.github.io/ferrovec/demo.html)** — the WASM core ranking real MiniLM
-> vectors, entirely in your browser tab, no server and no network.
+> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — two parts, one page, no
+> server. First the WASM core ranking real MiniLM vectors in your tab; then, at the bottom, a notebook on
+> this package: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged
+> get lost.
 
 ## Who it's for
 
