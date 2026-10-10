@@ -19,8 +19,8 @@ query with its stored text intact. A final reopen checks every acknowledged id.
 
 | browser | cycles | acked writes | lost | torn tails recovered | reopen p50 / p95 (ms) | date | ferrovec commit |
 |---|---:|---:|---:|---:|---:|---|---|
-| Chromium 149 (headless, Playwright) | 1,000 | 5,887 | **0** | 1 | 64.3 / 82.6 | 2026-10-10 | 19a2955 + uncommitted Phase 1 tree |
-| Firefox 151 (headless, Playwright) | 1,000 | 6,012 | **0** | 0 | 174 / 325 | 2026-10-10 | 19a2955 + uncommitted Phase 1 tree |
+| Chromium 149 (headless, Playwright) | 1,000 | 5,887 | **0** | 1 | 64.3 / 82.6 | 2026-10-10 | 67bb5c6 |
+| Firefox 151 (headless, Playwright) | 1,000 | 6,012 | **0** | 0 | 174 / 325 | 2026-10-10 | 67bb5c6 |
 | WebKit 26.5 (Playwright) | — | — | — | — | — | not run | could not launch on the test host (missing system library `libavif16`) |
 
 Notes:
