@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 import { WalCorruptError } from '../src/errors.ts';
 import { crc32 } from '../src/crc32.ts';
 import {
+  WAL_MAX_HEADER_LEN,
+  WAL_MAX_MODEL_LEN,
   WAL_MIN_HEADER_LEN,
   declaredWalHeaderLength,
   decodeWalHeader,
@@ -253,4 +255,26 @@ test('encode: an insert vector whose length is not dims throws', () => {
   );
   // A remove carries no vector, so dims do not matter.
   assert.ok(encodeWalRecord({ kind: 'remove', id: 'x' }, DIMS).length > 0);
+});
+
+test('the model id is bounded to 256 UTF-8 bytes: encode throws above it, decode and declared length reject it', () => {
+  assert.equal(WAL_MAX_MODEL_LEN, 256);
+  assert.equal(WAL_MAX_HEADER_LEN, 282);
+  const longest = encodeWalHeader({ baseSequence: 1n, dims: DIMS, model: 'm'.repeat(256) });
+  assert.equal(longest.length, WAL_MAX_HEADER_LEN);
+  assert.equal(decodeWalHeader(longest).model.length, 256);
+  assert.equal(declaredWalHeaderLength(longest), WAL_MAX_HEADER_LEN);
+  assert.throws(() => encodeWalHeader({ baseSequence: 1n, dims: DIMS, model: 'm'.repeat(257) }), RangeError);
+  // 129 two-byte characters = 258 UTF-8 bytes: the bound is in bytes, not characters.
+  assert.throws(() => encodeWalHeader({ baseSequence: 1n, dims: DIMS, model: 'é'.repeat(129) }), RangeError);
+
+  const isBadHeader = (err: unknown): boolean => err instanceof WalCorruptError && err.reason === 'bad-header';
+  for (const modelLen of [257, 0x1000, 0xffff]) {
+    const bytes = new Uint8Array(70_000);
+    bytes.set(encodeWalHeader({ baseSequence: 1n, dims: DIMS, model: MODEL }));
+    new DataView(bytes.buffer).setUint16(20, modelLen, true);
+    assert.equal(declaredWalHeaderLength(bytes), null, `modelLen ${modelLen}: not a cut write`);
+    assert.equal(declaredWalHeaderLength(bytes.subarray(0, 40)), null, `modelLen ${modelLen}, short file`);
+    assert.throws(() => decodeWalHeader(bytes), isBadHeader, `modelLen ${modelLen}`);
+  }
 });

@@ -807,7 +807,11 @@ $('s3-insert').addEventListener('click', () => op('Insert from this tab', async 
 function onRoleChange(from, to) {
   const extra = lastBye && Date.now() - lastBye.at < 30000 ? ` ${ms(Date.now() - lastBye.at)} after tab ${lastBye.tab} (${lastBye.role}) closed` : '';
   evidence(3, `Role changed: ${from} → ${to}${extra}.`, 'ok', { kind: 's3-role', from, to, afterByeMs: lastBye ? Date.now() - lastBye.at : null });
-  if (from === 'follower' && to === 'leader') void afterPromotion();
+  if (from === 'follower' && to === 'leader') {
+    // The promoted worker built the engine, so the model is loaded here now.
+    setModel('ready · loaded on promotion to leader', 'done');
+    void afterPromotion();
+  }
 }
 async function afterPromotion() {
   // Let any in-flight op finish; then prove the promoted tab serves the shared store.

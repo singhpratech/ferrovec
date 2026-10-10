@@ -22,7 +22,14 @@ import {
   type StoreFile,
 } from '../src/persistence.ts';
 import { decodeSnapshot } from '../src/snapshot.ts';
-import { decodeWalHeader, encodeWalHeader, encodeWalRecord, scanWal, type WalRecord } from '../src/wal.ts';
+import {
+  WAL_MAX_HEADER_LEN,
+  decodeWalHeader,
+  encodeWalHeader,
+  encodeWalRecord,
+  scanWal,
+  type WalRecord,
+} from '../src/wal.ts';
 
 const DIMS = 32;
 /** The model every test snapshot (and bind) names. */
@@ -1156,4 +1163,97 @@ test('a log to be replayed that names a different model than the snapshot → St
     assert.equal(ok.walModel, model === '' ? null : model);
     await ok.close();
   }
+});
+
+// ---- a bad log header over logged records is refused, never dropped ----------
+
+/** A committed seq-1 store whose live log (based on 1) holds `n` acknowledged inserts. */
+async function liveLog(n: number): Promise<MemFS> {
+  const fs = new MemFS();
+  const store = await open(fs);
+  store.bind(producer({ count: 1 }), { dims: DIMS, model: MODEL });
+  await commit(store, 'insert', 'base'); // seq 1, log reset onto 1
+  for (let i = 0; i < n; i++) await store.append(ins(`r${i}`));
+  kill(fs);
+  assert.equal(fs.wal().base, 1n);
+  assert.equal(fs.wal().records.length, n);
+  return fs;
+}
+
+function refusesBadHeader(fs: MemFS): Promise<void> {
+  return assert.rejects(open(fs), (err: unknown) => {
+    assert.ok(err instanceof StoreCorruptError);
+    assert.deepEqual(err.slots, [{ file: 'wal.bin', reason: 'bad-header' }]);
+    return true;
+  });
+}
+
+test('valid snapshot + header crc corrupted + records behind it → StoreCorruptError bad-header (not discarded)', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const fs = await liveLog(3);
+  const log = fs.files.get('wal.bin')!;
+  assert.ok(log.length > WAL_MAX_HEADER_LEN, 'longer than any header: records follow it');
+  const damaged = log.slice();
+  damaged[HDR - 1] = damaged[HDR - 1]! ^ 0x01; // a bit flip in the stored header crc
+  fs.files.set('wal.bin', damaged);
+  await refusesBadHeader(fs);
+  assert.deepEqual(fs.files.get('wal.bin'), damaged, 'the log is left in place, not reset');
+  assert.equal(fs.open_.size, 0);
+  assert.equal(warn.mock.callCount(), 0);
+
+  // A bit flip in the baseSequence (covered by the crc) is refused the same way.
+  const based = log.slice();
+  based[8] = based[8]! ^ 0x04;
+  fs.files.set('wal.bin', based);
+  await refusesBadHeader(fs);
+});
+
+test('valid snapshot + garbage header of at most WAL_MAX_HEADER_LEN bytes → discarded with a warning, opens on the snapshot', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  for (const len of [26, 100, WAL_MAX_HEADER_LEN]) {
+    const fs = await liveLog(0);
+    const garbage = new Uint8Array(len).map((_, i) => (i * 37 + 11) & 0xff);
+    fs.files.set('wal.bin', garbage);
+    const store = await open(fs);
+    assert.equal(store.initialSnapshot?.sequence, 1n, `${len} bytes: opens on the snapshot`);
+    assert.deepEqual(store.initialReplay, []);
+    assert.equal(fs.files.get('wal.bin')!.length, 0, `${len} bytes: the log is reset`);
+    await store.close();
+  }
+  assert.equal(warn.mock.callCount(), 3);
+  assert.match(String(warn.mock.calls[0]!.arguments[0]), /unreadable header/);
+
+  // One byte longer than any header could be: there must be records behind it.
+  const fs = await liveLog(0);
+  fs.files.set('wal.bin', new Uint8Array(WAL_MAX_HEADER_LEN + 1).fill(0x5a));
+  await refusesBadHeader(fs);
+  assert.equal(warn.mock.callCount(), 3, 'no further warning: refused, not discarded');
+});
+
+test('modelLen flipped to 0xFFFF on a live log with records → StoreCorruptError bad-header, not an empty log', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const fs = await liveLog(3);
+  const flipped = fs.files.get('wal.bin')!.slice();
+  new DataView(flipped.buffer).setUint16(20, 0xffff, true);
+  fs.files.set('wal.bin', flipped);
+  await refusesBadHeader(fs);
+  assert.deepEqual(fs.files.get('wal.bin'), flipped, 'the records are left on disk');
+  assert.equal(warn.mock.callCount(), 0, 'not mistaken for an interrupted header write');
+
+  // Any modelLen above the 256-byte bound is corrupt, whatever the file length.
+  const just = fs.files.get('wal.bin')!.slice();
+  new DataView(just.buffer).setUint16(20, 257, true);
+  fs.files.set('wal.bin', just);
+  await refusesBadHeader(fs);
+
+  // Without a snapshot the same damage is refused too (unchanged behaviour).
+  const fresh = new MemFS();
+  const s = await open(fresh);
+  s.bind(producer({ count: 0 }), { dims: DIMS, model: MODEL });
+  for (let i = 0; i < 3; i++) await s.append(ins(`f${i}`));
+  kill(fresh);
+  const freshLog = fresh.files.get('wal.bin')!.slice();
+  new DataView(freshLog.buffer).setUint16(20, 0xffff, true);
+  fresh.files.set('wal.bin', freshLog);
+  await refusesBadHeader(fresh);
 });

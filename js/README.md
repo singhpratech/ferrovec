@@ -152,7 +152,11 @@ coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
   CRC-32 framed, is flushed to `wal.bin` before its promise resolves: the
   acknowledgement is the durability point. The log's checksummed `FVW2` header
   records its base snapshot sequence, the dimensions and the embedding model id
-  (layout: [`src/wal.ts`](https://github.com/singhpratech/ferrovec/blob/main/js/src/wal.ts)). Checkpoints (every 2,000 records or
+  (layout: [`src/wal.ts`](https://github.com/singhpratech/ferrovec/blob/main/js/src/wal.ts)).
+  A bad header over logged records is refused (`StoreCorruptError`), not
+  discarded; the narrow window is a log shorter than 282 bytes (the largest
+  possible header), which can only be a header write cut off before anything
+  was logged and is discarded with a warning when a valid snapshot exists. Checkpoints (every 2,000 records or
   4 MiB, and on `flush()`/`close()`) write a full snapshot to the non-current
   slot and only then reset the log. On open the log's base sequence is compared
   with the newest valid snapshot: equal replays, older is already folded in and

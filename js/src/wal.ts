@@ -16,7 +16,7 @@
  *   6   2  u16 flags = 0           (reserved)
  *   8   8  u64 baseSequence        (FVS2 snapshot sequence this log applies on top of; 0 = none)
  *   16  4  u32 dims
- *   20  2  u16 modelLen
+ *   20  2  u16 modelLen            (≤ 256: WAL_MAX_MODEL_LEN)
  *   22  n  model id UTF-8, modelLen bytes (the embedding model; empty = unknown)
  *   22+n 4 u32 headerCrc = crc32(bytes[0..22+n))
  * records, repeated until EOF
@@ -30,7 +30,11 @@
  *
  * The model id lets a store whose data lives only in the log (killed before
  * its first checkpoint) refuse to be reopened with a different embedding model
- * of the same width, exactly as an FVS2 snapshot's meta does. FVW1 (the 24-byte
+ * of the same width, exactly as an FVS2 snapshot's meta does. The model id is
+ * bounded to 256 UTF-8 bytes, so a header is never longer than 282 bytes
+ * (`WAL_MAX_HEADER_LEN`): a `modelLen` above the bound is corrupt, never "a
+ * header whose write was cut short", and a file longer than any header cannot
+ * be a torn header write (see `resolveWal` in `persistence.ts`). FVW1 (the 24-byte
  * header without a model id) never shipped and is rejected as `bad-header`.
  *
  * ## Torn tails are normal
@@ -77,6 +81,10 @@ export interface WalScan {
 
 /** Size of the smallest possible log header (empty model id), in bytes. */
 export const WAL_MIN_HEADER_LEN = 26;
+/** Longest model id a log header may carry, in UTF-8 bytes. */
+export const WAL_MAX_MODEL_LEN = 256;
+/** Size of the largest possible log header (a {@link WAL_MAX_MODEL_LEN}-byte model id), in bytes. */
+export const WAL_MAX_HEADER_LEN = WAL_MIN_HEADER_LEN + WAL_MAX_MODEL_LEN;
 /** Offset of the u16 `modelLen` field (the fixed part of the header ends here). */
 const MODEL_LEN_OFFSET = 20;
 /** Offset of the model id bytes. */
@@ -95,11 +103,13 @@ const encoder = new TextEncoder();
 /** Fatal, so a malformed UTF-8 payload is a stop condition rather than U+FFFD. */
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-/** Encode the log header. Throws if the model id exceeds 65535 UTF-8 bytes. */
+/** Encode the log header. Throws if the model id exceeds {@link WAL_MAX_MODEL_LEN} UTF-8 bytes. */
 export function encodeWalHeader(header: { baseSequence: bigint; dims: number; model: string }): Uint8Array {
   const model = encoder.encode(header.model);
-  if (model.length > MAX_ID_BYTES) {
-    throw new RangeError(`[ferrovec] model id is ${model.length} UTF-8 bytes; the log allows at most ${MAX_ID_BYTES}`);
+  if (model.length > WAL_MAX_MODEL_LEN) {
+    throw new RangeError(
+      `[ferrovec] model id is ${model.length} UTF-8 bytes; the log header allows at most ${WAL_MAX_MODEL_LEN}`,
+    );
   }
   const crcAt = MODEL_OFFSET + model.length;
   const bytes = new Uint8Array(crcAt + 4);
@@ -117,16 +127,20 @@ export function encodeWalHeader(header: { baseSequence: bigint; dims: number; mo
 
 /**
  * The header length a log *claims*, from its magic, version and `modelLen`
- * alone (no checksum), or `null` if `bytes` does not start like an FVW2 header.
- * Lets open tell a header whose write was cut short (the file ends inside the
- * declared header: nothing was ever logged after it) from a corrupt one.
+ * alone (no checksum), or `null` if `bytes` does not start like an FVW2 header
+ * or claims a `modelLen` above {@link WAL_MAX_MODEL_LEN} (corrupt, never a cut
+ * write). Lets open tell a header whose write was cut short (the file ends
+ * inside the declared header: nothing was ever logged after it) from a corrupt
+ * one.
  */
 export function declaredWalHeaderLength(bytes: Uint8Array): number | null {
   if (bytes.length < MODEL_OFFSET) return null;
   for (let i = 0; i < MAGIC.length; i++) if (bytes[i] !== MAGIC[i]) return null;
   const view = new DataView(bytes.buffer, bytes.byteOffset, MODEL_OFFSET);
   if (view.getUint16(4, true) !== VERSION) return null;
-  return MODEL_OFFSET + view.getUint16(MODEL_LEN_OFFSET, true) + 4;
+  const modelLen = view.getUint16(MODEL_LEN_OFFSET, true);
+  if (modelLen > WAL_MAX_MODEL_LEN) return null;
+  return MODEL_OFFSET + modelLen + 4;
 }
 
 /** Decode and validate the log header. Throws `WalCorruptError('bad-header')`. */
@@ -140,7 +154,11 @@ export function decodeWalHeader(bytes: Uint8Array): WalHeader {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const version = view.getUint16(4, true);
   if (version !== VERSION) throw new WalCorruptError('bad-header', `unsupported version ${version}`);
-  const crcAt = MODEL_OFFSET + view.getUint16(MODEL_LEN_OFFSET, true);
+  const modelLen = view.getUint16(MODEL_LEN_OFFSET, true);
+  if (modelLen > WAL_MAX_MODEL_LEN) {
+    throw new WalCorruptError('bad-header', `model id length ${modelLen} exceeds ${WAL_MAX_MODEL_LEN}`);
+  }
+  const crcAt = MODEL_OFFSET + modelLen;
   if (bytes.length < crcAt + 4) {
     throw new WalCorruptError('bad-header', `short header (${bytes.length} of ${crcAt + 4} bytes)`);
   }

@@ -68,8 +68,12 @@
  *   write since the store was created, so the store opens as fresh and the log
  *   is replayed. Both warn once, naming the torn slot. A log with base > 0, or
  *   none, means the torn slot held data that exists nowhere else: refuse. A log
- *   with an unreadable header is ignored (with a warning) only when a valid
- *   snapshot exists to fall back on.
+ *   with an unreadable header is discarded (with a warning) only when a valid
+ *   snapshot exists to fall back on **and** the file is no longer than the
+ *   largest possible header (`WAL_MAX_HEADER_LEN`, 282 bytes): a header is only
+ *   ever written right after `truncate(0)`, so a torn header write can never
+ *   leave a longer file. A bad header over logged records is corruption and is
+ *   refused (`StoreCorruptError`, `bad-header`), never silently dropped.
  * - The log header names the embedding model its records were embedded with,
  *   so a store killed before its first checkpoint still carries the model
  *   guard (see `coordinator.ts`). When a snapshot exists its meta is
@@ -106,6 +110,7 @@ import {
 } from './snapshot.ts';
 import type { Durability, Persister } from './types.ts';
 import {
+  WAL_MAX_HEADER_LEN,
   WAL_MIN_HEADER_LEN,
   declaredWalHeaderLength,
   decodeWalHeader,
@@ -784,12 +789,17 @@ function resolveWal(wal: SlotFile, snapshot: SnapshotResolution, storeName: stri
     header = decodeWalHeader(bytes);
   } catch (err) {
     if (!(err instanceof WalCorruptError)) throw err;
-    if (snapshot.initialSnapshot === null) {
+    // Discard only what a crash can produce: a header is written only right
+    // after truncate(0), so a torn header write leaves at most one header's
+    // bytes. A longer file has records behind a damaged header — acknowledged
+    // writes whose base is unknowable — so refuse rather than drop them.
+    if (snapshot.initialSnapshot === null || bytes.length > WAL_MAX_HEADER_LEN) {
       throw new StoreCorruptError(storeName, [{ file: 'wal.bin', reason: 'bad-header' }]);
     }
     console.warn(
-      `[ferrovec] store "${storeName}": wal.bin has an unreadable header (${err.message}); ` +
-        `its contents are unknowable, so it is discarded and the last checkpoint is used`,
+      `[ferrovec] store "${storeName}": wal.bin has an unreadable header (${err.message}) and ` +
+        `no room for records behind it (${bytes.length} bytes); it is discarded and the last ` +
+        `checkpoint is used`,
     );
     resetWal(wal);
     return empty;
