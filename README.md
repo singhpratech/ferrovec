@@ -27,7 +27,7 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 - 🪶 **Featherweight & shim-free** — `serde` + `postcard` are the *only* dependencies; the WASM core is 77 KB (35 KB gzipped), with no `getrandom` (deterministic splitmix64 PRNG) and no threads, so it's happy on bare `wasm32-unknown-unknown`.
 - ⚡ **SIMD-accelerated** distance on `wasm32 + simd128` with a scalar fallback; `#![deny(unsafe_code)]` everywhere outside the audited kernel. Portable versioned byte format reloads identically native or in-browser.
 
-> **Status — both registries are on `0.4.0`.** crates.io `0.4.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.4.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), and — new in `0.4.0` — crash-safe storage (**M7**): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox. See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+> **Status — both registries are on `0.4.0`.** crates.io `0.4.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.4.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), and — new in `0.4.0` — crash-safe storage (**M7**): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox. See the [roadmap](#roadmap), or **[try the notebook demo](https://singhpratech.github.io/ferrovec/remember.html)**.
 
 ## Who it's for
 
@@ -263,7 +263,9 @@ Vectors that are already L2-normalized (e.g. sentence embeddings) pair naturally
 
 ## In the browser
 
-> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — the real WASM core running semantic search over 24 sentence embeddings, entirely in your browser tab. No server, no network: the wasm binary and the vectors are baked into a single HTML file.
+> **▶ [Notebook demo](https://singhpratech.github.io/ferrovec/remember.html)** — the npm package running a notebook in your tab: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged get lost. Opens instantly, no model download.
+>
+> **▶ [Search demo](https://singhpratech.github.io/ferrovec/demo.html)** — the WASM core ranking real MiniLM vectors over 24 sentence embeddings, entirely in your browser tab. No server, no network: the wasm binary and the vectors are baked into a single HTML file.
 
 `ferrovec` compiles to WebAssembly and exposes a `FerrovecCore` class through `wasm-bindgen`. Build it with [`wasm-pack`](https://rustwasm.github.io/wasm-pack/):
 
