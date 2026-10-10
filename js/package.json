@@ -37,11 +37,13 @@
   ],
   "scripts": {
     "build": "tsup && rm -rf dist/core && cp -r src/core dist/core",
+    "build:live": "tsup --config tsup.live.config.ts && rm -rf ../docs/live/core && mkdir -p ../docs/live/core && cp src/core/ferrovec.js src/core/ferrovec_bg.wasm ../docs/live/core/",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
     "test:real": "FERROVEC_REAL=1 node --test test/real.test.ts",
     "test:browser": "node --test test/browser/*.test.ts",
-    "test:chaos": "node test/chaos/harness.ts"
+    "test:chaos": "node test/chaos/harness.ts",
+    "test:live": "node --test test/live/live-demo.test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4"

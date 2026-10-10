@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ferrovec live demo</title>
+<meta name="description" content="Seven use cases for ferrovec, run first-hand in your browser: notes that survive a reload, a tab killed mid-write, two tabs on one store, a corrupted snapshot, a wrong model refused, private document search, and long-lived memory. Every claim is measured by the page itself." />
+<meta property="og:title" content="ferrovec live demo — every use case, first-hand" />
+<meta property="og:description" content="The real ferrovec package (transformers.js MiniLM + Rust/WASM HNSW + OPFS write-ahead log) running in your tab. Every promise is checked by the page, right now." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://singhpratech.github.io/ferrovec/live.html" />
+<meta property="og:image" content="https://singhpratech.github.io/ferrovec/assets/cover.jpg" />
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
+<style>
+  :root {
+    --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #8B8478;
+    --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
+    --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4;
+    --wasm: #5B48D8; --wasm-soft: #E3DFF7;
+    --good: #2E6B3C; --good-soft: #DBE9DD;
+    --warn: #8A6410; --code-bg: #EBE7DE;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+      --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+      --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15;
+      --wasm: #927FF0; --wasm-soft: #241E3E;
+      --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F;
+      --code-bg: #1E1A15;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+    --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+    --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
+    --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --code-bg: #1E1A15;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    font-size: 1.02rem; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  .mono, code, pre, .eyebrow, .ev, .st-v, .btn, .chip { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+  code { background: var(--code-bg); padding: 0.12em 0.38em; border-radius: 3px; font-size: 0.86em; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  h1, h2, h3 { text-wrap: balance; }
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 1rem; }
+  .eyebrow { font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); margin: 0 0 0.5rem; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .topbar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--paper) 86%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .topbar .inner { display: flex; align-items: center; gap: 1rem; min-height: 3.4rem; }
+  .topbar .tb-brand { font-weight: 700; letter-spacing: -0.01em; color: var(--ink); display: inline-flex; align-items: center; gap: 0.5rem; flex: 0 0 auto; text-decoration: none; }
+  .topbar .tb-logo { width: 26px; height: 26px; border-radius: 7px; object-fit: cover; display: block; box-shadow: 0 0 0 1px var(--line), 0 2px 8px rgba(0,0,0,0.25); }
+  .topbar nav { display: flex; gap: 1.15rem; margin-left: auto; align-items: center; font-size: 0.82rem; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav a { color: var(--ink-soft); text-decoration: none; letter-spacing: 0.02em; flex: 0 0 auto; padding: 0.2rem 0; }
+  .topbar nav a:hover { color: var(--accent); }
+  .topbar nav a.tab-demo { color: var(--accent); font-weight: 600; }
+
+  header.intro { padding: 2.2rem 0 1.2rem; }
+  header.intro h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; letter-spacing: -0.025em; margin: 0.2rem 0 0.7rem; }
+  .thesis { font-size: clamp(1.08rem, 2.2vw, 1.3rem); color: var(--ink-soft); margin: 0 0 0.6rem; max-width: 46rem; }
+  .thesis b { color: var(--ink); }
+  .sub { font-size: 0.92rem; color: var(--ink-faint); margin: 0; max-width: 50rem; }
+
+  /* status strip */
+  .status { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 1.2rem 0 0.5rem; }
+  .st { background: var(--panel); padding: 0.6rem 0.8rem; min-width: 0; }
+  .st.wide { grid-column: span 2; }
+  .st.full { grid-column: 1 / -1; }
+  .st-k { font-family: ui-monospace, Menlo, monospace; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+  .st-v { font-size: 0.86rem; margin-top: 0.15rem; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .st-v.good { color: var(--good); } .st-v.warn { color: var(--warn); } .st-v.bad { color: var(--accent); } .st-v.w { color: var(--wasm); }
+  .bar { height: 5px; background: var(--panel-2); border-radius: 3px; margin-top: 0.4rem; overflow: hidden; position: relative; }
+  .bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+  .bar.indet i { width: 35%; animation: slide 1.2s ease-in-out infinite; }
+  .bar.done i { width: 100%; background: var(--good); }
+  @keyframes slide { 0% { left: -35%; } 100% { left: 100%; } }
+  .opline { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; color: var(--ink-faint); min-height: 1.3em; margin: 0 0 1rem; }
+  .opline.busy { color: var(--wasm); }
+  .note-dl { font-size: 0.86rem; color: var(--ink-soft); margin: 0 0 1.2rem; }
+
+  .banner { display: none; border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 0.8rem 1rem; margin: 0 0 1rem; font-size: 0.92rem; }
+  .banner.show { display: block; }
+  .banner pre { white-space: pre-wrap; margin: 0.4rem 0 0.6rem; font-size: 0.8rem; }
+
+  /* layout */
+  .layout { display: grid; grid-template-columns: 15.5rem minmax(0, 1fr); gap: 1.5rem; align-items: start; padding-bottom: 2rem; }
+  .scene-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; position: sticky; top: 4.2rem; }
+  .scene-list button { width: 100%; text-align: left; background: transparent; border: 1px solid var(--line); border-radius: 7px; padding: 0.55rem 0.7rem; color: var(--ink); cursor: pointer; font: inherit; font-size: 0.92rem; line-height: 1.3; }
+  .scene-list button .n { font-family: ui-monospace, Menlo, monospace; color: var(--accent); font-size: 0.75rem; margin-right: 0.35rem; }
+  .scene-list button .p { display: block; font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem; letter-spacing: 0.04em; color: var(--ink-faint); margin-top: 0.15rem; }
+  .scene-list button:hover { border-color: var(--accent); }
+  .scene-list button[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent); }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .scene-list { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .scene { padding: 1rem 0.9rem 1.1rem; }
+    .scene-list button .p { display: none; }
+    .st.wide { grid-column: auto; }
+  }
+
+  .scene { display: none; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 1.2rem 1.3rem 1.3rem; }
+  .scene.active { display: block; }
+  .scene h2 { font-size: clamp(1.35rem, 3vw, 1.75rem); margin: 0 0 0.5rem; letter-spacing: -0.01em; }
+  .persona { font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--wasm); background: var(--wasm-soft); display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; margin-bottom: 0.6rem; }
+  .setup { color: var(--ink-soft); margin: 0 0 1rem; max-width: 44rem; }
+  .controls { display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center; margin: 0 0 0.9rem; }
+  .btn { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; padding: 0.6rem 0.95rem; border-radius: 5px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; }
+  .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-2); color: #fff; }
+  .btn.danger { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  textarea, input[type="text"], input[type="search"] { font: inherit; font-size: 0.95rem; width: 100%; padding: 0.6rem 0.7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
+  textarea { min-height: 4.4rem; resize: vertical; }
+  textarea:disabled, input:disabled { opacity: 0.6; }
+  .hint { font-size: 0.86rem; color: var(--ink-faint); margin: 0.2rem 0 0.9rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0 0 0.9rem; min-height: 1.4rem; }
+  .chip { font-size: 0.7rem; background: var(--good-soft); color: var(--good); padding: 0.12rem 0.45rem; border-radius: 3px; }
+  .role-big { font-family: ui-monospace, Menlo, monospace; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; }
+  .role-big.leader, .role-big.solo { color: var(--good); } .role-big.follower { color: var(--wasm); }
+  .kv { display: flex; gap: 1.6rem; flex-wrap: wrap; margin: 0 0 1rem; }
+  .kv .st-k { margin-bottom: 0.1rem; }
+
+  .ev-wrap { margin-top: 0.4rem; }
+  .ev-h { font-family: ui-monospace, Menlo, monospace; font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--good); margin-bottom: 0.3rem; }
+  .ev { background: var(--code-bg); border: 1px solid var(--line); border-left: 3px solid var(--good); border-radius: 6px; padding: 0.7rem 0.85rem; font-size: 0.78rem; line-height: 1.6; min-height: 3rem; overflow-wrap: anywhere; }
+  .ev:empty::before { content: "Nothing measured yet. Run the scene above."; color: var(--ink-faint); }
+  .ev-line { padding: 0.12rem 0; border-bottom: 1px dashed var(--line); }
+  .ev-line:last-child { border-bottom: none; }
+  .ev-line.ok { color: var(--good); } .ev-line.bad { color: var(--accent); } .ev-line.info { color: var(--ink-soft); }
+  .ev-line .t { color: var(--ink-faint); margin-right: 0.45rem; }
+
+  .results { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+  .results li { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.65rem; font-size: 0.9rem; display: grid; grid-template-columns: 3.6rem minmax(0, 1fr); gap: 0.6rem; }
+  .results .sc { font-family: ui-monospace, Menlo, monospace; color: var(--accent); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  .results .id { display: block; font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem; color: var(--ink-faint); }
+  .drop { border: 1.5px dashed var(--line); border-radius: 8px; padding: 0.9rem; text-align: center; font-size: 0.9rem; color: var(--ink-soft); margin: 0 0 0.9rem; }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop input { margin-top: 0.5rem; max-width: 100%; }
+  pre.code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.7rem 0.9rem; font-size: 0.78rem; overflow-x: auto; margin: 0 0 1rem; }
+  .row { display: flex; gap: 0.5rem; align-items: center; margin: 0 0 0.6rem; }
+  .row > input { flex: 1; min-width: 0; }
+
+  .notshown { border-top: 1px solid var(--line); padding: 1.4rem 0 3rem; color: var(--ink-soft); font-size: 0.92rem; }
+  .notshown b { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="inner wrap">
+    <a class="tb-brand" href="./index.html"><img class="tb-logo" src="./assets/logo-256.png" alt="ferrovec logo" width="26" height="26" /> ferrovec</a>
+    <nav aria-label="Site">
+      <a href="./index.html">Overview</a>
+      <a href="./demo.html">Instant demo</a>
+      <a href="./chaos.html">Crash test</a>
+      <a class="tab-demo" href="./live.html" aria-current="page">▶ Live demo</a>
+      <a href="https://github.com/singhpratech/ferrovec">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <header class="intro">
+    <p class="eyebrow">ferrovec 0.4.0 · the real package, in this tab</p>
+    <h1>ferrovec live demo</h1>
+    <p class="thesis"><b>Every promise below is checked by this page, in your browser, right now.</b> Each scene ends with evidence the page measured itself: counts, ids, timings, typed error names.</p>
+    <p class="sub">Code path: <code>Ferrovec.open</code> → dedicated worker → leader election → transformers.js MiniLM embeddings → Rust/WASM HNSW → OPFS A/B snapshots + write-ahead log. No fake embedder, no baked vectors, no server.</p>
+
+    <div class="status" id="status" aria-live="polite">
+      <div class="st wide"><div class="st-k">Model · Xenova/all-MiniLM-L6-v2</div><div class="st-v" id="st-model">waiting…</div><div class="bar indet" id="st-bar"><i></i></div></div>
+      <div class="st"><div class="st-k">db.role</div><div class="st-v" id="st-role">—</div></div>
+      <div class="st"><div class="st-k">db.persistent</div><div class="st-v" id="st-persistent">—</div></div>
+      <div class="st"><div class="st-k">db.storagePersisted</div><div class="st-v" id="st-sp">—</div></div>
+      <div class="st"><div class="st-k">Documents</div><div class="st-v" id="st-docs">—</div></div>
+      <div class="st full"><div class="st-k">On disk · OPFS ferrovec/live-demo/</div><div class="st-v" id="st-foot">—</div></div>
+    </div>
+    <p class="opline" id="opline"></p>
+    <p class="note-dl">First visit downloads the embedding model: <b>~23 MB once, cached by the browser; later opens are offline.</b> Until it is ready the controls below are disabled, not hidden.</p>
+    <div class="banner" id="banner"><b>The store did not open.</b><pre id="banner-msg"></pre><button class="btn danger" type="button" id="banner-destroy">Destroy and reseed</button></div>
+  </header>
+
+  <div class="layout">
+    <nav aria-label="Scenes">
+      <ul class="scene-list" id="scene-list">
+        <li><button type="button" data-goto="1"><span class="n">1</span>Notes that survive<span class="p">local-first notes · PKM</span></button></li>
+        <li><button type="button" data-goto="2"><span class="n">2</span>Kill the tab mid-write<span class="p">crash safety</span></button></li>
+        <li><button type="button" data-goto="3"><span class="n">3</span>Two tabs, one store<span class="p">multi-tab dashboards</span></button></li>
+        <li><button type="button" data-goto="4"><span class="n">4</span>Corrupt a file, still open<span class="p">kiosks · edge · no backend</span></button></li>
+        <li><button type="button" data-goto="5"><span class="n">5</span>Wrong model, refused<span class="p">agent memory</span></button></li>
+        <li><button type="button" data-goto="6"><span class="n">6</span>Private search over your docs<span class="p">privacy-bound RAG</span></button></li>
+        <li><button type="button" data-goto="7"><span class="n">7</span>Memory that lasts<span class="p">extensions · agents</span></button></li>
+      </ul>
+    </nav>
+
+    <div>
+      <!-- 1 -->
+      <section class="scene" id="scene-1" data-scene="1">
+        <span class="persona">Local-first notes · PKM</span>
+        <h2>Notes that survive</h2>
+        <p class="setup">Type a note and save it. Each save is one <code>insert</code>; its promise resolves only after the write-ahead log record is flushed to OPFS. Then reload the tab and the page checks every note you saved.</p>
+        <textarea id="s1-text" aria-label="Note text" placeholder="e.g. Ask the landlord about the boiler service before winter" disabled></textarea>
+        <div class="controls" style="margin-top:0.6rem">
+          <button class="btn primary" type="button" id="s1-save" data-op disabled>Save note</button>
+          <button class="btn" type="button" id="s1-reload" data-op disabled>Reload this tab</button>
+        </div>
+        <div class="chips" id="s1-chips" aria-label="Acknowledged note ids"></div>
+        <p class="hint">Try airplane mode, then reload. The model and the index are both local. (The page itself comes from GitHub Pages' HTTP cache, which stays fresh for 10 minutes; an installed app would ship a service worker.)</p>
+        <div class="ev-wrap"><div class="ev-h">Evidence</div><div class="ev" id="ev-1"></div></div>
+      </section>
+
+      <!-- 2 -->
+      <section class="scene" id="scene-2" data-scene="2">
+        <span class="persona">Crash safety</span>
+        <h2>Kill the tab mid-write</h2>
+        <p class="setup">The button fires 60 inserts one after another (strict durability) and records every acknowledged id in <code>sessionStorage</code> the moment it is acknowledged. At a random point between acknowledgement 5 and 55 it starts the next insert and calls <code>location.reload()</code> immediately: no <code>close()</code>, no <code>flush()</code>, no waiting. When the page comes back it checks every acknowledged id.</p>
+        <div class="controls">
+          <button class="btn primary" type="button" id="s2-run" data-op disabled>Insert 60 and reload at a random moment</button>
+        </div>
+        <div class="ev-wrap"><div class="ev-h">Evidence</div><div class="ev" id="ev-2"></div></div>
+      </section>
+
+      <!-- 3 -->
+      <section class="scene" id="scene-3" data-scene="3">
+        <span class="persona">Multi-tab dashboards</span>
+        <h2>Two tabs, one store</h2>
+        <p class="setup">Open a second tab of this page. One tab is elected leader and owns the files; the other becomes a follower that forwards every operation to it. Insert from either tab and watch the other tab's count follow.</p>
+        <div class="kv">
+          <div><div class="st-k">This tab</div><div class="role-big" id="s3-role">—</div></div>
+          <div><div class="st-k">Tab id</div><div class="st-v" id="s3-tab">—</div></div>
+          <div><div class="st-k">Documents (polled 1 s)</div><div class="role-big" id="s3-count">—</div></div>
+        </div>
+        <div class="controls">
+          <button class="btn" type="button" id="s3-open" data-op disabled>Open a second tab</button>
+          <button class="btn primary" type="button" id="s3-insert" data-op disabled>Insert from this tab</button>
+        </div>
+        <p class="hint">Then close the leader tab. Watch this tab's role flip to leader within a second, and the store keep working.</p>
+        <div class="ev-wrap"><div class="ev-h">Evidence</div><div class="ev" id="ev-3"></div></div>
+      </section>
+
+      <!-- 4 -->
+      <section class="scene" id="scene-4" data-scene="4">
+        <span class="persona">Kiosks · edge · no backend</span>
+        <h2>Corrupt a file, still open</h2>
+        <p class="setup">The store keeps two snapshot slots and writes each checkpoint into the one that does <em>not</em> hold the newest snapshot, so a tab killed mid-checkpoint can only tear that slot. These buttons damage the real files in OPFS (through a throwaway worker holding a sync access handle) and then reopen.</p>
+        <div class="controls">
+          <button class="btn primary" type="button" id="s4-crash" data-op disabled>Crash mid-checkpoint</button>
+          <button class="btn danger" type="button" id="s4-newest" data-op disabled>Tear the newest snapshot</button>
+          <button class="btn danger" type="button" id="s4-both" data-op disabled>Tear both snapshots</button>
+          <button class="btn" type="button" id="s4-destroy" disabled>Destroy and reseed</button>
+        </div>
+        <p class="hint"><b>Crash mid-checkpoint</b> writes a checkpoint, saves 3 notes into the log, reloads without closing, and, before the store reopens, writes half of a newer checkpoint over the slot the next checkpoint targets: exactly what a tab kill mid-checkpoint leaves. <b>Tear the newest</b> and <b>Tear both</b> damage data that has no intact copy left; the page shows how open refuses instead of guessing.</p>
+        <div class="ev-wrap"><div class="ev-h">Evidence</div><div class="ev" id="ev-4"></div></div>
+      </section>
+
+      <!-- 5 -->
+      <section class="scene" id="scene-5" data-scene="5">
+        <span class="persona">Agent memory</span>
+        <h2>Wrong model, refused</h2>
+        <p class="setup">Vectors from two embedding models are not comparable; mixing them returns confident nonsense. The store records its embedding space in every snapshot, so opening it with a different model is refused before that model is downloaded.</p>
+        <div class="controls">
+          <button class="btn primary" type="button" id="s5-run" data-op disabled>Open with Xenova/bge-small-en-v1.5</button>
+        </div>
+        <div class="ev-wrap"><div class="ev-h">Evidence</div><div class="ev" id="ev-5"></div></div>
+      </section>
+
+      <!-- 6 -->
+      <section class="scene" id="scene-6" data-scene="6">
+        <span class="persona">Privacy-bound RAG</span>
+        <h2>Private search over your documents</h2>
+        <p class="setup">Search the seed corpus plus everything you added. Drop a <code>.txt</code> or <code>.md</code> file: it is split on blank lines and each paragraph is embedded and indexed in this tab.</p>
+        <div class="row">
+          <input type="search" id="s6-q" aria-label="Search query" placeholder="how much paid leave do new parents get?" disabled />
+          <button class="btn primary" type="button" id="s6-search" data-op disabled>Search</button>
+        </div>
+        <ol class="results" id="s6-results"></ol>
+        <div class="drop" id="s6-drop">Drop .txt / .md files here, or choose them:<br /><input type="file" id="s6-file" accept=".txt,.md,text/plain,text/markdown" multiple disabled /></div>
+        <pre class="code"><span style="color:var(--ink-faint)">// everything this scene does, in three lines</span>
+const db = await Ferrovec.open('live-demo');
+await db.insert(paragraph, { id: `file-${name}-${n}` });
+const hits = await db.query('how much paid leave do new parents get?', 5);</pre>
+        <div class="ev-wrap"><div class="ev-h">Evidence</div><div class="ev" id="ev-6"></div></div>
+      </section>
+
+      <!-- 7 -->
+      <section class="scene" id="scene-7" data-scene="7">
+        <span class="persona">Browser extensions · agent memory</span>
+        <h2>Memory that lasts</h2>
+        <p class="setup">An extension or an assistant remembers what you saw, across restarts. Record a visit, come back another day, and ask about it. The page also counts how many times this browser profile has opened the demo, using a document stored <em>in the store itself</em>.</p>
+        <div class="controls">
+          <button class="btn primary" type="button" id="s7-remember" data-op disabled>Remember this page visit</button>
+          <button class="btn" type="button" data-op data-ask="What did I read about storage last week?" disabled>What did I read about storage last week?</button>
+          <button class="btn" type="button" data-op data-ask="Anything I read about food?" disabled>Anything I read about food?</button>
+        </div>
+        <ol class="results" id="s7-results"></ol>
+        <div class="ev-wrap"><div class="ev-h">Evidence</div><div class="ev" id="ev-7"></div></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="notshown">
+    <b>Not shown: power-loss durability (OPFS flush is not fsync) and cross-device sync. ferrovec does not claim them.</b>
+    The exact promises are in the README's <a href="https://github.com/singhpratech/ferrovec#durability-guarantees">Durability guarantees</a>; the kill-the-tab results (1,000 cycles each in Chromium and Firefox) are on the <a href="./chaos.html">crash test page</a>. Want the no-download version? The <a href="./demo.html">instant demo</a> runs the WASM core over baked vectors.
+  </section>
+</main>
+
+<script type="module">
+import { Ferrovec } from './live/index.js';
+
+const STORE = 'live-demo';
+const STORE_DIR = 'live-demo'; // sanitizeName('live-demo')
+const MODEL = 'Xenova/all-MiniLM-L6-v2';
+const WRONG_MODEL = 'Xenova/bge-small-en-v1.5';
+const K = 'fv-live:';
+const $ = (id) => document.getElementById(id);
+const nf = (n) => Number(n).toLocaleString('en-US');
+const ms = (t) => `${Math.round(t)} ms`;
+const mb = (b) => `${(b / 1e6).toFixed(1)} MB`;
+const sleep = (t) => new Promise((r) => setTimeout(r, t));
+const rand = (n) => Math.random().toString(36).slice(2, 2 + n);
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+/* ---------- session storage (always wrapped) ---------- */
+const ss = {
+  get(key, fallback) { try { const v = sessionStorage.getItem(K + key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { sessionStorage.setItem(K + key, JSON.stringify(value)); } catch { /* storage unavailable */ } },
+  del(key) { try { sessionStorage.removeItem(K + key); } catch { /* storage unavailable */ } },
+};
+
+/* ---------- seed corpus ---------- */
+const SEED = [
+  'Inspection, bridge 14 north abutment: hairline crack in the bearing seat, photographed, monitor monthly.',
+  'Orchard block C: leaf curl on the peach trees after the cold snap; sampled six trees for lab tests.',
+  'Pump station 3 inspection: vibration on motor two above threshold, bearing replacement scheduled.',
+  'Site survey, east field: standing water near the culvert after rain, drainage ditch partly blocked.',
+  'Clinic outreach visit: twelve patients seen, two referred for follow-up blood pressure checks.',
+  'Employees accrue 1.5 days of paid vacation per month, and up to 30 unused days carry over to next year.',
+  'Parental leave: 16 weeks fully paid for the primary caregiver and 6 weeks for the secondary caregiver.',
+  'Remote work needs manager approval and a secure home network; the VPN is mandatory for client data.',
+  'Expense claims must be filed within 30 days with itemized receipts attached.',
+  'Harassment complaints can be raised confidentially with HR or through the anonymous hotline.',
+  'Reading list: Designing Data-Intensive Applications, the chapter on write-ahead logs and crash recovery.',
+  'Article to finish: how the Origin Private File System gives web apps fast, private on-device storage.',
+  'Paper: efficient approximate nearest neighbor search using hierarchical navigable small world graphs.',
+  'Bookmark: a guide to sourdough starters and long cold fermentation.',
+  'Blog post on local-first software: your data stays on your device and syncs later.',
+  'Ticket 4412: customer cannot reset their password; the reset email lands in the spam folder.',
+  'Ticket 4420: invoice PDF shows the wrong currency for orders shipped to Canada.',
+  'Ticket 4431: the mobile app crashes when uploading a photo larger than 20 MB.',
+  'Ticket 4437: refund requested for a duplicate charge on the annual plan.',
+  'Ticket 4445: the dashboard loads slowly for accounts with more than ten thousand contacts.',
+  'Kiosk FAQ: the museum opens at 9 am and closes at 6 pm; last entry is at 5 pm.',
+  'Kiosk FAQ: lockers are on the lower level next to the cloakroom and take coins or a card.',
+  'Kiosk FAQ: wheelchairs can be borrowed for free at the information desk.',
+  'Kiosk FAQ: the café on the second floor serves vegetarian and gluten-free lunches.',
+  'Kiosk FAQ: photography without flash is allowed in all permanent galleries.',
+  'Note to self: call the dentist on Tuesday to move the cleaning appointment.',
+  'Gift idea for Maya: a hardcover sketchbook and a set of watercolor pencils.',
+  'Recipe tweak: add a pinch of smoked paprika to the lentil soup and use less salt.',
+  'Running log: 8 km along the river in 44 minutes, knee felt fine.',
+  'Idea: a weekend trip to the coast in October when the crowds are gone.',
+].map((text, i) => ({ id: `seed-${String(i + 1).padStart(2, '0')}`, text }));
+
+const READING = [
+  'an explainer on browser storage quotas and when data gets evicted',
+  'a post about write-ahead logging and crash recovery in SQLite',
+  'notes on OPFS sync access handles and file locking in web workers',
+  'a review of three pairs of noise-cancelling headphones',
+  'a long read on the history of the bicycle',
+  'a recipe for miso-glazed aubergine with sesame rice',
+  'a thread comparing vector databases for retrieval-augmented generation',
+  'a training plan for a first half marathon',
+];
+const WORDS = {
+  a: ['amber', 'brisk', 'copper', 'dusty', 'frozen', 'gentle', 'hollow', 'ivory', 'jagged', 'lucky', 'muddy', 'noisy', 'olive', 'quiet', 'rusty', 'silver', 'tidy', 'violet', 'windy', 'young'],
+  n: ['ferry', 'lantern', 'tractor', 'violin', 'glacier', 'pigeon', 'satchel', 'compass', 'meadow', 'kettle', 'harbor', 'quarry', 'canvas', 'orchard', 'beacon', 'tunnel', 'parcel', 'ladder', 'falcon', 'barrel'],
+  v: ['drifts past', 'waits beside', 'rolls toward', 'hums under', 'leans on', 'circles', 'guards', 'follows', 'blocks', 'crosses'],
+  p: ['the old mill', 'platform nine', 'the north gate', 'the river bend', 'a closed bakery', 'the night market', 'the signal box', 'a quiet library', 'the ferry dock', 'the hill farm'],
+};
+const wordy = () => `${pick(WORDS.a)} ${pick(WORDS.n)} ${pick(WORDS.v)} ${pick(WORDS.p)}`;
+
+/* ---------- state ---------- */
+let db = null;
+let busy = false;
+let corrupt = null; // last open error when the store refused to open
+let currentScene = 1;
+const tabId = rand(4);
+let modelLoadedMs = null;
+
+/* ---------- evidence ---------- */
+function clock() {
+  const d = new Date();
+  return `${d.toLocaleTimeString('en-GB', { hour12: false })}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+}
+function evidence(scene, text, cls = '', data = null) {
+  const box = $(`ev-${scene}`);
+  const line = document.createElement('div');
+  line.className = `ev-line ${cls}`;
+  const t = document.createElement('span');
+  t.className = 't';
+  t.textContent = clock();
+  line.append(t, document.createTextNode(text));
+  if (data) {
+    line.dataset.kind = data.kind;
+    line.dataset.json = JSON.stringify(data);
+  }
+  box.append(line);
+  return line;
+}
+
+/* ---------- operations: disabled controls + elapsed ms ---------- */
+function setControls() {
+  const ready = db !== null && !busy;
+  for (const el of document.querySelectorAll('[data-op]')) el.disabled = !ready;
+  for (const id of ['s1-text', 's6-q', 's6-file']) $(id).disabled = !ready;
+  $('s4-destroy').disabled = busy || corrupt === null;
+}
+let opTimer = null;
+async function op(label, fn) {
+  if (busy) return undefined;
+  busy = true;
+  setControls();
+  const line = $('opline');
+  const t0 = performance.now();
+  line.className = 'opline busy';
+  line.textContent = `${label}… 0 ms`;
+  opTimer = setInterval(() => { line.textContent = `${label}… ${ms(performance.now() - t0)}`; }, 50);
+  try {
+    return await fn();
+  } catch (err) {
+    line.dataset.err = err?.name ?? 'Error';
+    evidence(currentScene, `${label} failed: ${err?.name ?? 'Error'}: ${err?.message ?? err}`, 'bad', { kind: 'op-error', name: err?.name, message: err?.message });
+    return undefined;
+  } finally {
+    clearInterval(opTimer);
+    line.className = 'opline';
+    line.textContent = `${label}: ${ms(performance.now() - t0)}`;
+    busy = false;
+    setControls();
+    void refreshStatus();
+  }
+}
+
+/* ---------- on-disk inspection (main thread, getFile; works while the worker holds the sync handles) ---------- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(...parts) { let c = 0xffffffff; for (const p of parts) for (let i = 0; i < p.length; i++) c = CRC_T[(c ^ p[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+
+async function storeDir() {
+  try {
+    const root = await navigator.storage.getDirectory();
+    const base = await root.getDirectoryHandle('ferrovec');
+    return await base.getDirectoryHandle(STORE_DIR);
+  } catch { return null; }
+}
+async function readFile(dir, name) {
+  try { return new Uint8Array(await (await (await dir.getFileHandle(name)).getFile()).arrayBuffer()); } catch { return null; }
+}
+async function fileSize(dir, name) {
+  try { return (await (await dir.getFileHandle(name)).getFile()).size; } catch { return null; }
+}
+/** Decode an FVS2 slot header (layout: js/src/snapshot.ts). */
+function parseSlot(file, bytes) {
+  if (bytes === null) return { file, size: null, valid: false, reason: 'missing' };
+  const size = bytes.length;
+  if (size === 0) return { file, size, valid: false, reason: 'empty' };
+  if (size < 32) return { file, size, valid: false, reason: 'too-short' };
+  const v = new DataView(bytes.buffer, bytes.byteOffset, size);
+  if (v.getUint32(0, false) !== 0x46565332) return { file, size, valid: false, reason: 'bad-magic' };
+  const sequence = Number(v.getBigUint64(8, false));
+  const metaLen = v.getUint32(16, false), coreLen = v.getUint32(20, false), textsLen = v.getUint32(24, false);
+  if (32 + metaLen + coreLen + textsLen !== size) return { file, size, valid: false, reason: 'bad-length', sequence };
+  if (crc32(bytes.subarray(0, 28), bytes.subarray(32)) !== v.getUint32(28, false)) return { file, size, valid: false, reason: 'bad-crc', sequence };
+  let count = null, model = null;
+  try { const meta = JSON.parse(new TextDecoder().decode(bytes.subarray(32, 32 + metaLen))); count = meta.count; model = meta.embeddingSpace?.model ?? null; } catch { /* leave unknown */ }
+  return { file, size, valid: true, sequence, count, model };
+}
+/** Walk wal.bin's framed records (layout: js/src/wal.ts). */
+function parseWal(bytes) {
+  if (bytes === null) return { size: null, records: 0, tail: 0, base: null };
+  const size = bytes.length;
+  if (size < 24) return { size, records: 0, tail: size, base: null };
+  const v = new DataView(bytes.buffer, bytes.byteOffset, size);
+  const magicOk = bytes[0] === 0x46 && bytes[1] === 0x56 && bytes[2] === 0x57 && bytes[3] === 0x31;
+  if (!magicOk || crc32(bytes.subarray(0, 20)) !== v.getUint32(20, true)) return { size, records: 0, tail: size - 24, base: null, badHeader: true };
+  const base = Number(v.getBigUint64(8, true));
+  let off = 24, records = 0;
+  while (off + 8 <= size) {
+    const len = v.getUint32(off, true);
+    if (len === 0 || off + 8 + len > size) break;
+    if (crc32(bytes.subarray(off + 8, off + 8 + len)) !== v.getUint32(off + 4, true)) break;
+    records++;
+    off += 8 + len;
+  }
+  return { size, records, tail: size - off, base };
+}
+async function inspectStore(full = true) {
+  const dir = await storeDir();
+  if (!dir) return null;
+  const [a, b, w] = await Promise.all([
+    full ? readFile(dir, 'slot-a.bin') : fileSize(dir, 'slot-a.bin'),
+    full ? readFile(dir, 'slot-b.bin') : fileSize(dir, 'slot-b.bin'),
+    readFile(dir, 'wal.bin'),
+  ]);
+  const slotA = full ? parseSlot('slot-a', a) : { file: 'slot-a', size: a };
+  const slotB = full ? parseSlot('slot-b', b) : { file: 'slot-b', size: b };
+  const wal = parseWal(w);
+  let newest = null;
+  if (full) for (const s of [slotA, slotB]) if (s.valid && (!newest || s.sequence > newest.sequence)) newest = s;
+  return { slotA, slotB, wal, newest, raw: full ? { 'slot-a': a, 'slot-b': b } : null };
+}
+function describeSlot(s) {
+  if (!s || s.size === null) return `${s?.file ?? 'slot'} missing`;
+  if (!s.valid) return `${s.file} ${s.reason} (${nf(s.size)} bytes)`;
+  return `${s.file} (sequence ${s.sequence}, ${nf(s.count)} documents, ${nf(s.size)} bytes)`;
+}
+
+/* ---------- a throwaway module worker that damages one store file ---------- */
+const TEAR_SRC = `
+self.onmessage = async (e) => {
+  const { dir, file, truncateTo, writeBytes } = e.data;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const d = await (await root.getDirectoryHandle('ferrovec')).getDirectoryHandle(dir);
+    const fh = await d.getFileHandle(file, { create: true });
+    let h = null;
+    for (let i = 0; ; i++) {
+      try { h = await fh.createSyncAccessHandle(); break; }
+      catch (err) { if (i >= 120) throw err; await new Promise((r) => setTimeout(r, 50)); }
+    }
+    const before = h.getSize();
+    if (writeBytes) h.write(writeBytes, { at: 0 });
+    if (typeof truncateTo === 'number') h.truncate(truncateTo);
+    h.flush();
+    const after = h.getSize();
+    h.close();
+    self.postMessage({ ok: true, before, after });
+  } catch (err) {
+    self.postMessage({ ok: false, name: err && err.name, message: String(err && err.message || err) });
+  }
+};`;
+function tearFile(file, { truncateTo, writeBytes } = {}) {
+  const url = URL.createObjectURL(new Blob([TEAR_SRC], { type: 'text/javascript' }));
+  const w = new Worker(url, { type: 'module' });
+  return new Promise((resolve, reject) => {
+    w.onmessage = (e) => {
+      w.terminate(); URL.revokeObjectURL(url);
+      if (e.data.ok) resolve(e.data);
+      else { const err = new Error(e.data.message); err.name = e.data.name || 'Error'; reject(err); }
+    };
+    w.onerror = (e) => { w.terminate(); URL.revokeObjectURL(url); reject(new Error(e.message || 'tear worker failed')); };
+    w.postMessage({ dir: STORE_DIR, file: `${file}.bin`, truncateTo, writeBytes });
+  });
+}
+
+/* ---------- model cache (transformers.js keeps fetched files in Cache Storage) ---------- */
+const cachedSizes = new Map(); // url -> bytes (entries are immutable once cached)
+async function modelCache(filter = null) {
+  try {
+    if (typeof caches === 'undefined') return null;
+    const cache = await caches.open('transformers-cache');
+    const keys = await cache.keys();
+    let bytes = 0, files = 0;
+    for (const req of keys) {
+      if (filter && !req.url.includes(filter)) continue;
+      let size = cachedSizes.get(req.url);
+      if (size === undefined) {
+        const res = await cache.match(req);
+        const len = Number(res?.headers.get('content-length'));
+        size = Number.isFinite(len) && len > 0 ? len : (res ? (await res.blob()).size : 0);
+        cachedSizes.set(req.url, size);
+      }
+      bytes += size;
+      files++;
+    }
+    return { bytes, files };
+  } catch { return null; }
+}
+
+/* ---------- status strip ---------- */
+let lastSize = null;
+async function refreshStatus() {
+  if (db) {
+    try { lastSize = await db.size(); } catch { /* transient during failover */ }
+  }
+  $('st-docs').textContent = lastSize === null ? '—' : nf(lastSize);
+  const info = await inspectStore(false);
+  if (info) {
+    const w = info.wal;
+    $('st-foot').textContent =
+      `slot-a ${nf(info.slotA.size ?? 0)} B · slot-b ${nf(info.slotB.size ?? 0)} B · wal.bin ${nf(w.size ?? 0)} B · ${nf(w.records)} log record${w.records === 1 ? '' : 's'}` +
+      (w.tail > 0 ? ` + ${nf(w.tail)} B torn tail` : '');
+  } else {
+    $('st-foot').textContent = 'no files yet';
+  }
+}
+let lastRole = null;
+function tickRole() {
+  const role = db ? db.role : null;
+  const roleEl = $('st-role');
+  roleEl.textContent = role ?? (corrupt ? 'closed' : '—');
+  roleEl.className = `st-v ${role === 'follower' ? 'w' : role ? 'good' : ''}`;
+  const s3 = $('s3-role');
+  s3.textContent = role ?? '—';
+  s3.className = `role-big ${role ?? ''}`;
+  if (db) {
+    $('st-persistent').textContent = String(db.persistent);
+    $('st-persistent').className = `st-v ${db.persistent ? 'good' : 'warn'}`;
+    $('st-sp').textContent = String(db.storagePersisted);
+    $('st-sp').className = `st-v ${db.storagePersisted ? 'good' : ''}`;
+  }
+  if (role && lastRole && role !== lastRole) onRoleChange(lastRole, role);
+  if (role) lastRole = role;
+}
+function setModel(text, state) {
+  $('st-model').textContent = text;
+  $('st-model').className = `st-v ${state === 'done' ? 'good' : state === 'bad' ? 'bad' : ''}`;
+  $('st-bar').className = `bar ${state === 'done' ? 'done' : state === 'bad' ? '' : 'indet'}`;
+}
+
+/* ---------- verification primitive ---------- */
+async function verifyAcked(list) {
+  const t0 = performance.now();
+  let found = 0, top1Misses = 0;
+  const lost = [];
+  for (const { id, text } of list) {
+    const top = await db.query(text, 1);
+    if (top[0]?.id === id) { found++; continue; }
+    // HNSW is approximate: before calling an id lost, look a little wider (as the chaos harness does).
+    const wide = await db.query(text, 10);
+    if (wide.some((h) => h.id === id)) { found++; top1Misses++; } else lost.push(id);
+  }
+  return { checked: list.length, found, lost, top1Misses, ms: performance.now() - t0 };
+}
+async function isPresent(item) {
+  const wide = await db.query(item.text, 10);
+  return wide.some((h) => h.id === item.id);
+}
+
+/* ---------- open / seed / visits ---------- */
+async function openStore(extra = {}) {
+  const t0 = performance.now();
+  db = await Ferrovec.open(STORE, extra);
+  corrupt = null;
+  $('banner').classList.remove('show');
+  return performance.now() - t0;
+}
+async function seedIfEmpty() {
+  const size = await db.size();
+  if (size > 0) return { seeded: 0, size };
+  const t0 = performance.now();
+  for (const { id, text } of SEED) await db.insert(text, { id });
+  return { seeded: SEED.length, size: await db.size(), ms: performance.now() - t0 };
+}
+const VISIT_ID = 'meta-visits';
+let visitText = null;
+async function bumpVisits() {
+  // The counter is a document in the store; read the last value back by query, then upsert.
+  let prev = 0;
+  const probe = 'ferrovec live demo visit counter';
+  let hits = await db.query(probe, 10);
+  let hit = hits.find((h) => h.id === VISIT_ID);
+  if (!hit) {
+    const size = await db.size();
+    if (size > 10) { hits = await db.query(probe, Math.min(size, 200)); hit = hits.find((h) => h.id === VISIT_ID); }
+  }
+  if (hit?.text) { const m = /opened the demo (\d+) time/.exec(hit.text); if (m) prev = Number(m[1]); }
+  const next = prev + 1;
+  visitText = `ferrovec live demo visit counter: this browser profile has opened the demo ${next} time${next === 1 ? '' : 's'}.`;
+  await db.insert(visitText, { id: VISIT_ID });
+  return { prev, next };
+}
+
+/* ---------- scene routing ---------- */
+function showScene(n) {
+  currentScene = n;
+  for (const s of document.querySelectorAll('.scene')) s.classList.toggle('active', s.dataset.scene === String(n));
+  for (const b of document.querySelectorAll('[data-goto]')) b.setAttribute('aria-current', String(b.dataset.goto === String(n)));
+}
+for (const b of document.querySelectorAll('[data-goto]')) {
+  b.addEventListener('click', () => {
+    showScene(Number(b.dataset.goto));
+    try { history.replaceState(null, '', `#scene-${b.dataset.goto}`); } catch { /* ignore */ }
+  });
+}
+function sceneFromHash() {
+  const h = location.hash;
+  if (h === '#tab2') return 3;
+  const m = /^#scene-([1-7])$/.exec(h);
+  return m ? Number(m[1]) : 1;
+}
+
+/* ---------- multi-tab presence (page-level BroadcastChannel; the store has its own) ---------- */
+let chan = null;
+try { chan = new BroadcastChannel('ferrovec-live-demo-page'); } catch { /* unsupported */ }
+const peers = new Map(); // tabId -> last seen
+let lastOtherInsert = null;
+let lastBye = null;
+function post(msg) { try { chan?.postMessage({ ...msg, tab: tabId }); } catch { /* closed */ } }
+if (chan) {
+  chan.onmessage = (e) => {
+    const m = e.data;
+    if (!m || m.tab === tabId) return;
+    peers.set(m.tab, Date.now());
+    if (m.type === 'ping') post({ type: 'pong' });
+    if (m.type === 'insert') {
+      lastOtherInsert = { id: m.id, text: m.text, tab: m.tab };
+      evidence(3, `Tab ${m.tab} inserted ${m.id}.`, 'info');
+    }
+    if (m.type === 'bye') { lastBye = { tab: m.tab, role: m.role, at: Date.now() }; peers.delete(m.tab); }
+  };
+}
+addEventListener('pagehide', () => post({ type: 'bye', role: db?.role ?? null }));
+async function otherTabsOpen() {
+  if (!chan) return 0;
+  const since = Date.now();
+  post({ type: 'ping' });
+  await sleep(250);
+  let n = 0;
+  for (const t of peers.values()) if (t >= since) n++;
+  return n;
+}
+async function requireSoleTab(scene) {
+  if (db && db.role === 'follower') {
+    evidence(scene, 'This tab is a follower: another tab owns the store. Close the other demo tabs first.', 'bad');
+    return false;
+  }
+  const others = await otherTabsOpen();
+  if (others > 0) {
+    evidence(scene, `${others} other demo tab${others === 1 ? ' is' : 's are'} open. Closing this store would hand the files to ${others === 1 ? 'it' : 'them'}; close the other tabs first.`, 'bad');
+    return false;
+  }
+  return true;
+}
+
+/* ---------- scene 1: notes that survive ---------- */
+function renderS1() {
+  const list = ss.get('s1:acked', []);
+  const chips = $('s1-chips');
+  chips.replaceChildren(...list.map((n) => { const c = document.createElement('span'); c.className = 'chip'; c.textContent = `✓ ${n.id}`; c.title = n.text; return c; }));
+}
+$('s1-save').addEventListener('click', () => op('Save note', async () => {
+  const text = $('s1-text').value.trim() || `Quick note ${rand(4)}: ${wordy()}.`;
+  const id = `note-${rand(6)}`;
+  const t0 = performance.now();
+  await db.insert(text, { id });
+  const t = performance.now() - t0;
+  const list = ss.get('s1:acked', []);
+  list.push({ id, text });
+  ss.set('s1:acked', list);
+  $('s1-text').value = '';
+  renderS1();
+  evidence(1, `Saved ${id}: acknowledged after the log record was flushed, in ${ms(t)}.`, 'ok', { kind: 's1-save', id, ms: t });
+}));
+$('s1-reload').addEventListener('click', () => {
+  ss.set('pending', { kind: 's1', notes: ss.get('s1:acked', []).length });
+  location.reload();
+});
+
+/* ---------- scene 2: kill the tab mid-write ---------- */
+$('s2-run').addEventListener('click', () => op('Insert 60, reload at a random moment', async () => {
+  const runId = rand(4);
+  const killAfter = 5 + Math.floor(Math.random() * 51); // reload after ack #5..#55
+  const acked = [];
+  ss.set('s2:acked', acked);
+  ss.set('pending', { kind: 's2', runId, killAfter });
+  for (let i = 1; i <= 60; i++) {
+    const id = `crash-${runId}-${String(i).padStart(2, '0')}`;
+    const text = `Crash test ${runId}, entry ${i}: the ${wordy()}, tag ${rand(5)}.`;
+    const pending = db.insert(text, { id });
+    if (i === killAfter + 1) {
+      ss.set('s2:inflight', { id, text, n: i });
+      location.reload(); // no await, no close(), no flush()
+      await new Promise(() => {}); // never settle: the page is going away
+    }
+    await pending;
+    acked.push({ id, text });
+    ss.set('s2:acked', acked); // recorded the moment it is acknowledged
+  }
+}));
+
+/* ---------- scene 3: two tabs, one store ---------- */
+let s3Count = 0;
+$('s3-open').addEventListener('click', () => {
+  const url = location.href.split('#')[0] + '#tab2';
+  window.open(url, '_blank');
+  evidence(3, 'Opened a second tab. It should report role "follower".', 'info');
+});
+$('s3-insert').addEventListener('click', () => op('Insert from this tab', async () => {
+  s3Count++;
+  const id = `tab-${tabId}-${s3Count}`;
+  const text = `Dashboard tab ${tabId} entry ${s3Count}: ${wordy()}.`;
+  const t0 = performance.now();
+  await db.insert(text, { id });
+  post({ type: 'insert', id, text });
+  evidence(3, `Inserted ${id} as ${db.role} in ${ms(performance.now() - t0)}.`, 'ok', { kind: 's3-insert', id, role: db.role });
+}));
+function onRoleChange(from, to) {
+  const extra = lastBye && Date.now() - lastBye.at < 30000 ? ` ${ms(Date.now() - lastBye.at)} after tab ${lastBye.tab} (${lastBye.role}) closed` : '';
+  evidence(3, `Role changed: ${from} → ${to}${extra}.`, 'ok', { kind: 's3-role', from, to, afterByeMs: lastBye ? Date.now() - lastBye.at : null });
+  if (from === 'follower' && to === 'leader') void afterPromotion();
+}
+async function afterPromotion() {
+  // Let any in-flight op finish; then prove the promoted tab serves the shared store.
+  for (let i = 0; i < 100 && busy; i++) await sleep(50);
+  await op('Check the store after promotion', async () => {
+    const size = await db.size();
+    if (lastOtherInsert) {
+      const top = await db.query(lastOtherInsert.text, 1);
+      const ok = top[0]?.id === lastOtherInsert.id;
+      evidence(3, `After promotion: ${nf(size)} documents; query for tab ${lastOtherInsert.tab}'s insert returns ${top[0]?.id ?? 'nothing'}${ok ? ' (match)' : ' (MISMATCH)'}.`, ok ? 'ok' : 'bad', { kind: 's3-promoted', size, expected: lastOtherInsert.id, got: top[0]?.id ?? null, ok });
+    } else {
+      evidence(3, `After promotion: ${nf(size)} documents. (The other tab inserted nothing this session to look up.)`, 'ok', { kind: 's3-promoted', size, expected: null, got: null, ok: true });
+    }
+    const id = `tab-${tabId}-post-failover`;
+    await db.insert(`Inserted by tab ${tabId} after it was promoted to leader: ${wordy()}.`, { id });
+    evidence(3, `And the store keeps working: inserted ${id} as ${db.role}; ${nf(await db.size())} documents.`, 'ok');
+  });
+}
+let s3Poll = null;
+function syncScene3Poll() {
+  if (currentScene === 3 && !s3Poll) {
+    s3Poll = setInterval(async () => {
+      if (!db) return;
+      try { const n = await db.size(); $('s3-count').textContent = nf(n); } catch { /* failover gap */ }
+    }, 1000);
+  } else if (currentScene !== 3 && s3Poll) {
+    clearInterval(s3Poll); s3Poll = null;
+  }
+}
+
+/* ---------- scene 4: corrupt a file, still open ---------- */
+function corruptState(err) {
+  corrupt = { name: err?.name ?? 'Error', message: err?.message ?? String(err) };
+  db = null;
+  $('banner-msg').textContent = `${corrupt.name}: ${corrupt.message}`;
+  $('banner').classList.add('show');
+  setControls();
+}
+$('s4-crash').addEventListener('click', () => op('Crash mid-checkpoint', async () => {
+  if (!(await requireSoleTab(4))) return;
+  await db.flush(); // fold the log into a checkpoint: the newest slot now holds everything so far
+  const before = await inspectStore(true);
+  const notes = [];
+  for (let i = 1; i <= 3; i++) {
+    const id = `kiosk-${rand(5)}`;
+    const text = `Kiosk log ${i} before the crash: ${wordy()}, tag ${rand(5)}.`;
+    await db.insert(text, { id });
+    notes.push({ id, text });
+  }
+  ss.set('s4:acked', notes);
+  ss.set('pending', { kind: 's4', checkpoint: before.newest?.file ?? null, sequence: before.newest?.sequence ?? null });
+  location.reload(); // like a tab kill: no close(), so the 3 notes live only in the log
+  await new Promise(() => {});
+}));
+async function tearAndReopen(which) {
+  if (!(await requireSoleTab(4))) return;
+  const sizeBefore = await db.size();
+  // Make sure both slots hold a checkpoint: flush one, rewrite the visit counter
+  // unchanged (an upsert, i.e. one log record), and let close() write the other.
+  await db.flush();
+  if (visitText) await db.insert(visitText, { id: VISIT_ID });
+  await db.close();
+  db = null;
+  const info = await inspectStore(true);
+  evidence(4, `After close: ${describeSlot(info.slotA)}; ${describeSlot(info.slotB)}; wal.bin ${nf(info.wal.size ?? 0)} bytes based on sequence ${info.wal.base ?? '-'}, ${info.wal.records} records.`, 'info');
+  const targets = which === 'both' ? [info.slotA, info.slotB] : [info.newest].filter(Boolean);
+  if (targets.length === 0) { evidence(4, 'No valid snapshot on disk yet.', 'bad'); await openStore(); return; }
+  for (const s of targets) {
+    if (!s.size) { evidence(4, `${s.file} is empty: nothing to tear.`, 'info'); continue; }
+    const r = await tearFile(s.file, { truncateTo: Math.floor(s.size / 2) });
+    evidence(4, `${s.file}${s.valid ? ` (sequence ${s.sequence}, ${nf(s.count)} documents)` : ''} was ${nf(r.before)} bytes, truncated to ${nf(r.after)}.`, 'info', { kind: 's4-tear', file: s.file, before: r.before, after: r.after });
+  }
+  const t0 = performance.now();
+  try {
+    await openStore();
+    const size = await db.size();
+    evidence(4, `Reopen succeeded in ${ms(performance.now() - t0)} with ${nf(size)} documents (was ${nf(sizeBefore)}).`, size === sizeBefore ? 'ok' : 'bad', { kind: 's4-reopen', ok: true, size, sizeBefore });
+  } catch (err) {
+    const t = performance.now() - t0;
+    corruptState(err);
+    evidence(4, `Reopen refused in ${ms(t)}: ${err.name}: ${err.message}`, err.name === 'StoreCorruptError' ? 'ok' : 'bad', { kind: 's4-refused', name: err.name, message: err.message });
+    evidence(4, /wal-ahead-of-snapshot/.test(err.message)
+      ? `The other slot is intact but older: the log had already been folded into the torn snapshot and reset on top of it, so loading the older slot would silently drop everything since. ferrovec refuses with a typed error instead of serving a stale index. Use "Destroy and reseed".`
+      : 'No slot decodes, so there is nothing trustworthy to load. ferrovec throws a typed error instead of silently starting empty over your data; the app decides. Use "Destroy and reseed".', 'info');
+  }
+}
+$('s4-newest').addEventListener('click', () => op('Tear the newest snapshot', () => tearAndReopen('newest')));
+$('s4-both').addEventListener('click', () => op('Tear both snapshots', () => tearAndReopen('both')));
+async function destroyAndReseed(scene) {
+  if (busy) return;
+  busy = true; setControls();
+  const t0 = performance.now();
+  $('opline').textContent = 'Destroy and reseed…';
+  try {
+    await Ferrovec.destroy(STORE);
+    for (const k of ['s1:acked', 's2:acked', 's4:acked']) ss.del(k);
+    renderS1();
+    await openStore();
+    const seeded = await seedIfEmpty();
+    const visits = await bumpVisits();
+    evidence(scene, `Destroyed ferrovec/${STORE_DIR}/ and reseeded ${seeded.seeded} documents in ${ms(performance.now() - t0)}. The visit counter restarted at ${visits.next}; earlier notes are gone (that is what destroy means).`, 'ok', { kind: 'reseeded', size: seeded.size });
+  } catch (err) {
+    evidence(scene, `Destroy failed: ${err.name}: ${err.message}`, 'bad');
+  } finally {
+    busy = false; setControls();
+    $('opline').textContent = `Destroy and reseed: ${ms(performance.now() - t0)}`;
+    void refreshStatus();
+  }
+}
+$('s4-destroy').addEventListener('click', () => destroyAndReseed(4));
+$('banner-destroy').addEventListener('click', () => destroyAndReseed(currentScene));
+
+/* ---------- scene 5: wrong model, refused ---------- */
+$('s5-run').addEventListener('click', () => op('Open with a different model', async () => {
+  if (!(await requireSoleTab(5))) return;
+  const sizeBefore = await db.size();
+  await db.close(); // folds the log into a snapshot that records the embedding space
+  db = null;
+  const filesBefore = await inspectStore(true);
+  const sig = (i) => `${crc32(i.raw['slot-a'] ?? new Uint8Array())}:${crc32(i.raw['slot-b'] ?? new Uint8Array())}:${i.wal.size}`;
+  const t0 = performance.now();
+  let refused = null;
+  try {
+    const wrong = await Ferrovec.open(STORE, { model: WRONG_MODEL });
+    await wrong.close();
+  } catch (err) {
+    refused = err;
+  }
+  const t = performance.now() - t0;
+  const bge = await modelCache('bge-small');
+  const filesAfter = await inspectStore(true);
+  if (refused) {
+    evidence(5, `Refused in ${ms(t)}: ${refused.name}`, refused.name === 'EmbeddingSpaceMismatchError' ? 'ok' : 'bad', { kind: 's5-refused', name: refused.name, ms: t, bgeFiles: bge?.files ?? null });
+    evidence(5, refused.message, 'info');
+  } else {
+    evidence(5, `Not refused: the store opened with ${WRONG_MODEL}.`, 'bad', { kind: 's5-refused', name: null, ms: t });
+  }
+  evidence(5, bge && bge.files === 0 ? `No download: the browser's model cache holds 0 files for bge-small.` : `Model cache entries for bge-small: ${bge ? bge.files : 'unknown (Cache Storage unavailable)'}.`, bge && bge.files === 0 ? 'ok' : 'info');
+  evidence(5, sig(filesBefore) === sig(filesAfter) ? 'slot-a, slot-b and wal.bin are byte-for-byte unchanged by the refused open (CRC-32 of each slot compared).' : 'Store files changed during the refused open.', sig(filesBefore) === sig(filesAfter) ? 'ok' : 'bad');
+  const t1 = performance.now();
+  await openStore();
+  const sizeAfter = await db.size();
+  evidence(5, `Reopened with ${MODEL} in ${ms(performance.now() - t1)}. Store untouched: ${nf(sizeAfter)} documents (was ${nf(sizeBefore)}).`, sizeAfter === sizeBefore ? 'ok' : 'bad', { kind: 's5-reopen', sizeBefore, sizeAfter });
+}));
+
+/* ---------- scene 6: private search ---------- */
+function renderResults(el, hits) {
+  el.replaceChildren(...hits.map((h) => {
+    const li = document.createElement('li');
+    const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = h.score.toFixed(3);
+    const body = document.createElement('span');
+    const id = document.createElement('span'); id.className = 'id'; id.textContent = h.id;
+    body.append(document.createTextNode(h.text ?? ''), id);
+    li.append(sc, body);
+    return li;
+  }));
+}
+async function search() {
+  const q = $('s6-q').value.trim() || $('s6-q').placeholder;
+  await op('Search', async () => {
+    const t0 = performance.now();
+    const hits = await db.query(q, 5);
+    const t = performance.now() - t0;
+    renderResults($('s6-results'), hits);
+    evidence(6, `"${q}" → top ${hits.length} of ${nf(await db.size())} documents in ${ms(t)} (embed + HNSW search, in this tab). Best: ${hits[0]?.id ?? 'none'} (${hits[0]?.score.toFixed(3) ?? '-'}).`, 'ok', { kind: 's6-search', top: hits[0]?.id ?? null, n: hits.length });
+  });
+}
+$('s6-search').addEventListener('click', search);
+$('s6-q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !busy && db) search(); });
+function safeName(n) { return n.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 40) || 'file'; }
+async function ingest(files) {
+  await op('Index files', async () => {
+    for (const f of files) {
+      if (!/\.(txt|md)$/i.test(f.name) && !/^text\//.test(f.type)) { evidence(6, `Skipped ${f.name}: only .txt and .md are indexed.`, 'bad'); continue; }
+      const text = await f.text();
+      const paras = text.split(/\r?\n\s*\r?\n/).map((p) => p.trim()).filter((p) => p.length > 0);
+      const t0 = performance.now();
+      const name = safeName(f.name);
+      for (let i = 0; i < paras.length; i++) await db.insert(paras[i], { id: `file-${name}-${i + 1}` });
+      const t = performance.now() - t0;
+      evidence(6, `Indexed ${paras.length} paragraph${paras.length === 1 ? '' : 's'} from ${f.name} in ${(t / 1000).toFixed(1)} s (ids file-${name}-1…${paras.length}).`, 'ok', { kind: 's6-ingest', file: f.name, paragraphs: paras.length, ms: t });
+    }
+    evidence(6, 'Nothing was sent anywhere: no network request carries your text (the only network traffic is the model download; open DevTools → Network to confirm).', 'info');
+  });
+}
+$('s6-file').addEventListener('change', (e) => { const files = [...e.target.files]; e.target.value = ''; if (files.length) ingest(files); });
+const drop = $('s6-drop');
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (!db || busy) return; const files = [...(e.dataTransfer?.files ?? [])]; if (files.length) ingest(files); });
+
+/* ---------- scene 7: memory that lasts ---------- */
+let visits = null;
+$('s7-remember').addEventListener('click', () => op('Remember this page visit', async () => {
+  const what = pick(READING);
+  const when = new Date();
+  const id = `visit-${when.getTime()}`;
+  const text = `Visited on ${when.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}: read ${what}.`;
+  await db.insert(text, { id });
+  evidence(7, `Remembered ${id}: "${text}"`, 'ok', { kind: 's7-remember', id });
+}));
+for (const b of document.querySelectorAll('[data-ask]')) {
+  b.addEventListener('click', () => op('Recall', async () => {
+    const t0 = performance.now();
+    const hits = (await db.query(b.dataset.ask, 8)).filter((h) => h.id.startsWith('visit-')).slice(0, 3);
+    renderResults($('s7-results'), hits);
+    evidence(7, `"${b.dataset.ask}" → ${hits.length} remembered visit${hits.length === 1 ? '' : 's'} in ${ms(performance.now() - t0)}${hits[0] ? `; best: ${hits[0].id}` : '. Record a visit first'}.`, hits.length ? 'ok' : 'info', { kind: 's7-recall', n: hits.length });
+  }));
+}
+
+/* ---------- boot ---------- */
+async function boot() {
+  showScene(sceneFromHash());
+  syncScene3Poll();
+  addEventListener('hashchange', () => { showScene(sceneFromHash()); syncScene3Poll(); });
+  for (const b of document.querySelectorAll('[data-goto]')) b.addEventListener('click', syncScene3Poll);
+  $('s3-tab').textContent = tabId;
+  renderS1();
+  setControls();
+  setInterval(tickRole, 300);
+
+  // A pending action from before a reload is consumed exactly once.
+  const pending = ss.get('pending', null);
+  ss.del('pending');
+  if (pending) showScene({ s1: 1, s2: 2, s4: 4 }[pending.kind] ?? currentScene);
+  syncScene3Poll();
+
+  // What the store looks like on disk before this tab opens it.
+  const disk = await inspectStore(true);
+
+  // Scene 4: tear the checkpoint target before the store reopens (the crash shape).
+  if (pending?.kind === 's4' && disk) {
+    try {
+      const newest = disk.newest;
+      const target = newest?.file === 'slot-a' ? disk.slotB : disk.slotA;
+      if (!newest) throw new Error('no valid snapshot to fall back to');
+      const src = disk.raw[newest.file];
+      const torn = src.slice(0, Math.floor(src.length / 2));
+      new DataView(torn.buffer).setBigUint64(8, BigInt(newest.sequence + 1), false);
+      const r = await tearFile(target.file, { writeBytes: torn });
+      evidence(4, `Before reopening: wrote the first ${nf(torn.length)} of ${nf(src.length)} bytes of a sequence-${newest.sequence + 1} checkpoint over ${target.file} (${target.valid ? `was sequence ${target.sequence}` : target.reason}, ${nf(r.before)} bytes), as a tab killed mid-checkpoint leaves it.`, 'info', { kind: 's4-torn', target: target.file, newest: newest.file });
+      evidence(4, `On disk now: ${describeSlot(newest)} is intact; wal.bin holds ${disk.wal.records} log record${disk.wal.records === 1 ? '' : 's'} on top of sequence ${disk.wal.base}.`, 'info');
+    } catch (err) {
+      evidence(4, `Could not stage the torn checkpoint: ${err.name}: ${err.message}`, 'bad');
+    }
+  }
+
+  const cached = await modelCache('all-MiniLM-L6-v2');
+  const firstVisit = !cached || cached.files === 0;
+  const t0 = performance.now();
+  setModel(firstVisit ? 'opening store · downloading model (first visit)…' : 'opening store · loading model from the browser cache…', 'loading');
+  const progress = setInterval(async () => {
+    const now = await modelCache();
+    const el = performance.now() - t0;
+    setModel(`${firstVisit ? 'downloading' : 'loading from cache'} · ${(el / 1000).toFixed(1)} s${now ? ` · ${mb(now.bytes)} in cache (${now.files} files; each lands when complete)` : ''}`, 'loading');
+  }, 500);
+
+  let openMs;
+  try {
+    openMs = await openStore();
+  } catch (err) {
+    clearInterval(progress);
+    setModel(`store did not open: ${err.name}`, 'bad');
+    corruptState(err);
+    evidence(currentScene, `Ferrovec.open rejected: ${err.name}: ${err.message}`, 'bad', { kind: 'open-error', name: err.name });
+    void refreshStatus();
+    return;
+  }
+  clearInterval(progress);
+  modelLoadedMs = openMs;
+  const after = await modelCache();
+  if (db.role === 'follower') {
+    setModel(`not loaded in this tab: it is a follower, and the leader tab embeds for it · open ${ms(openMs)}`, 'done');
+  } else {
+    setModel(`ready · open ${ms(openMs)}${firstVisit ? ' (first visit: downloaded)' : ' (from browser cache, no network)'}${after ? ` · ${mb(after.bytes)} cached in ${after.files} files` : ''}`, 'done');
+  }
+
+  const seeded = await seedIfEmpty();
+  if (seeded.seeded) evidence(currentScene, `First open: seeded ${seeded.seeded} notes (seed-01…seed-30) in ${ms(seeded.ms)}.`, 'info', { kind: 'seeded' });
+  visits = await bumpVisits();
+  evidence(7, `This browser profile has opened the live demo ${visits.next} time${visits.next === 1 ? '' : 's'}. The counter is the document "${VISIT_ID}" inside the store, read back and upserted on every open${visits.prev ? `: it said ${visits.prev} before this open, so the upsert survived every reload and restart` : ''}.`, 'ok', { kind: 's7-visits', prev: visits.prev, next: visits.next });
+
+  if (pending?.kind === 's1') await afterS1(pending, openMs, disk, seeded);
+  if (pending?.kind === 's2') await afterS2(pending, openMs, disk);
+  if (pending?.kind === 's4') await afterS4(pending, openMs);
+
+  setControls();
+  tickRole();
+  void refreshStatus();
+}
+
+async function afterS1(pending, openMs, disk, seeded) {
+  const list = ss.get('s1:acked', []);
+  const size = await db.size();
+  evidence(1, `Reopened in ${ms(openMs)} (model from cache + index from OPFS) with ${nf(size)} documents.`, 'ok', { kind: 's1-reopen', ms: openMs, size });
+  if (list.length === 0) {
+    evidence(1, 'You had saved no notes before the reload, so there is nothing to verify. Save one, then reload.', 'info');
+  } else {
+    const v = await verifyAcked(list);
+    evidence(1, v.lost.length === 0
+      ? `All ${v.checked} note${v.checked === 1 ? '' : 's'} you saved before the reload ${v.checked === 1 ? 'is' : 'are'} present (exact-text query returns the same id; checked in ${ms(v.ms)}).`
+      : `${v.lost.length} of ${v.checked} saved notes are MISSING: ${v.lost.join(', ')}.`, v.lost.length === 0 ? 'ok' : 'bad', { kind: 's1-verify', checked: v.checked, found: v.found, lost: v.lost.length });
+  }
+  if (disk && seeded.seeded === 0) {
+    const n = disk.newest;
+    evidence(1, `No re-embedding ran: seeding was skipped because the store already held ${nf(size)} documents. The index came from OPFS: ${n ? describeSlot(n) : 'no snapshot yet'} plus ${disk.wal.records} log record${disk.wal.records === 1 ? '' : 's'} replayed.`, 'ok');
+  }
+}
+
+async function afterS2(pending, openMs, disk) {
+  const acked = ss.get('s2:acked', []);
+  const inflight = ss.get('s2:inflight', null);
+  ss.del('s2:inflight');
+  const v = await verifyAcked(acked);
+  const n = inflight?.n ?? acked.length + 1;
+  evidence(2, `Reload fired during insert #${n}. ${v.checked} acknowledged, ${v.found} found, ${v.lost.length} lost.`, v.lost.length === 0 ? 'ok' : 'bad',
+    { kind: 's2-result', run: pending.runId, acked: v.checked, found: v.found, lost: v.lost.length, top1Misses: v.top1Misses, reopenMs: openMs, killAfter: pending.killAfter });
+  const afterDisk = await inspectStore(false);
+  if (disk) {
+    const torn = disk.wal.tail;
+    evidence(2, torn > 0
+      ? `Before reopen, wal.bin held ${disk.wal.records} complete records plus a torn tail of ${nf(torn)} bytes (the interrupted append); reopen cut it off (wal.bin ${nf(disk.wal.size)} → ${nf(afterDisk?.wal.size ?? 0)} bytes). Reopen took ${ms(openMs)}.`
+      : `Before reopen, wal.bin held ${disk.wal.records} complete records and no partial record: the reload landed between log appends. Reopen (snapshot + log replay) took ${ms(openMs)}.`, 'info', { kind: 's2-tail', tornBytes: torn });
+  }
+  if (inflight) {
+    const present = await isPresent(inflight);
+    evidence(2, `What was not promised: insert #${inflight.n} (${inflight.id}) was never acknowledged, so it may or may not survive. This time it is ${present ? 'present' : 'absent'}.`, 'info', { kind: 's2-inflight', present });
+  }
+  if (v.top1Misses) evidence(2, `${v.top1Misses} acknowledged id(s) were found in the top 10 rather than top 1 (HNSW is approximate).`, 'info');
+}
+
+async function afterS4(pending, openMs) {
+  const notes = ss.get('s4:acked', []);
+  const disk = await inspectStore(true);
+  const size = await db.size();
+  evidence(4, `Reopen succeeded in ${ms(openMs)}: the torn slot was ignored, ${pending.checkpoint ?? 'the intact slot'} (sequence ${pending.sequence}) was loaded and the log replayed on top; ${nf(size)} documents.`, 'ok', { kind: 's4-recovered', size, sequence: pending.sequence });
+  const v = await verifyAcked(notes);
+  const v1 = await verifyAcked(ss.get('s1:acked', []));
+  evidence(4, `All ${v.found} of ${v.checked} notes saved just before the crash verified${v1.checked ? `, plus ${v1.found} of ${v1.checked} notes from scene 1` : ''}. Lost: ${v.lost.length + v1.lost.length}.`, v.lost.length + v1.lost.length === 0 && v.found === notes.length ? 'ok' : 'bad', { kind: 's4-verify', checked: v.checked, found: v.found, lost: v.lost.length + v1.lost.length });
+  if (disk) evidence(4, `On disk now: ${describeSlot(disk.slotA)}; ${describeSlot(disk.slotB)}. The torn slot is simply the target of the next checkpoint, which overwrites it.`, 'info');
+}
+
+boot();
+</script>
+</body>
+</html>

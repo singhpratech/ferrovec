@@ -21,11 +21,12 @@ thread, across reloads, across tabs. Nothing leaves the device.
 **safe across multiple tabs** via single-writer leader election, and now
 **crash-safe**: checksummed snapshots plus a write-ahead log, verified by a
 [published kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html).
-· [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Live demo**](https://singhpratech.github.io/ferrovec/demo.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
+· [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Live demo**](https://singhpratech.github.io/ferrovec/live.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
 
-> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — the real
-> WASM core running semantic search over sentence embeddings entirely in your browser tab.
-> No server, no network: the wasm binary and the vectors are baked into a single HTML file.
+> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/live.html)** — this package, running seven
+> use cases in your browser tab (notes that survive a reload, a tab killed mid-write, two tabs on
+> one store, a corrupted snapshot, a wrong model refused), each checked by the page itself.
+> No download wanted? The [instant demo](https://singhpratech.github.io/ferrovec/demo.html) runs the WASM core over baked vectors.
 
 ## Who it's for
 
