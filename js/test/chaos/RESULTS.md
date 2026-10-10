@@ -19,8 +19,8 @@ query with its stored text intact. A final reopen checks every acknowledged id.
 
 | browser | cycles | acked writes | lost | torn tails recovered | reopen p50 / p95 (ms) | date | ferrovec commit |
 |---|---:|---:|---:|---:|---:|---|---|
-| Chromium 149 (headless, Playwright) | 1,000 | 5,887 | **0** | 1 | 64.3 / 82.6 | 2026-10-10 | 67bb5c6 |
-| Firefox 151 (headless, Playwright) | 1,000 | 6,012 | **0** | 0 | 174 / 325 | 2026-10-10 | 67bb5c6 |
+| Chromium 149 (headless, Playwright) | 1,000 | 5,518 | **0** | 0 | 65.3 / 83.9 | 2026-10-10 | c53f7b0 |
+| Firefox 151 (headless, Playwright) | 1,000 | 5,445 | **0** | 0 | 171 / 303 | 2026-10-10 | c53f7b0 |
 | WebKit 26.5 (Playwright) | — | — | — | — | — | not run | could not launch on the test host (missing system library `libavif16`) |
 
 Notes:
@@ -30,15 +30,17 @@ Notes:
   and every id was the top-1 hit for its own text (0 fallbacks).
 - **Torn tails recovered** counts reopens where the log ended in a partial
   record, which was cut off and never applied. In strict mode that record had
-  not been acknowledged.
+  not been acknowledged. An earlier 1,000-cycle Chromium run on commit 67bb5c6
+  (the FVW1 log) recovered one such tail; this run on the final FVW2 log hit
+  none in either browser.
 - **Reopen** is the time to open the store in a fresh page, measured from the
   `open` request to its response. It includes worker start, wasm init,
-  snapshot decode and log replay. The index grows to about 6,000 documents over
+  snapshot decode and log replay. The index grows to about 5,500 documents over
   a run, so later reopens are slower, most visibly in Firefox.
-- Kills landed mid-batch in 773 of 1,000 Chromium cycles and 816 of 1,000
+- Kills landed mid-batch in 796 of 1,000 Chromium cycles and 824 of 1,000
   Firefox cycles; the remaining cycles were killed right after the batch's last
   acknowledgement.
-- Seeds: Chromium `830120441`, Firefox `1046975639`. They make batch sizes and
+- Seeds: Chromium `289194714`, Firefox `661297572`. They make batch sizes and
   kill points reproducible, but not the timing.
 - Negative control: when the harness was run against a build whose log write
   was deferred by 30 ms (simulating the old 250 ms snapshot debounce), all 259

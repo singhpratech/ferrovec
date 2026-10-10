@@ -137,11 +137,11 @@ try {
 
 | Browser | Cycles | Acked writes | Lost | Reopen p50 / p95 |
 | --- | ---: | ---: | ---: | ---: |
-| Chromium 149 | 1,000 | 5,887 | **0** | 64 / 83 ms |
-| Firefox 151 | 1,000 | 6,012 | **0** | 174 / 325 ms |
+| Chromium 149 | 1,000 | 5,518 | **0** | 65 / 84 ms |
+| Firefox 151 | 1,000 | 5,445 | **0** | 171 / 303 ms |
 | WebKit | not run | n/a | n/a | n/a |
 
-Chromium recovered 1 torn tail. The harness forces a checkpoint every 50 logged records (versus the 2,000-record production default) so that kills also land during and right after checkpoints; batches are 1 to 20 documents and the kill lands at a random point, including mid-insert. WebKit is not covered: Playwright WebKit would not launch on the CI host. As a negative control, a build with the log write deferred by 30 ms reported every acknowledged write in a 30-cycle run as lost, which shows the harness detects loss. Details and the re-run recipe: [crash-test results](./docs/chaos.html).
+Neither run hit a torn log tail this time (an earlier Chromium run on the previous log format recovered one). The harness forces a checkpoint every 50 logged records (versus the 2,000-record production default) so that kills also land during and right after checkpoints; batches are 1 to 20 documents and the kill lands at a random point, including mid-insert. WebKit is not covered: Playwright WebKit would not launch on the CI host. As a negative control, a build with the log write deferred by 30 ms reported every acknowledged write in a 30-cycle run as lost, which shows the harness detects loss. Details and the re-run recipe: [crash-test results](./docs/chaos.html).
 
 ---
 
