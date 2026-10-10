@@ -8,15 +8,17 @@
  * as one small framed record *before* its promise resolves, and the full
  * snapshot becomes a periodic checkpoint that the log is replayed on top of.
  *
- * ## `wal.bin` layout (little-endian, except the header magic)
+ * ## `wal.bin` layout (FVW2, little-endian, except the header magic)
  * ```
- * header, 24 bytes
- *   0   4  magic "FVW1"            (raw bytes, so a hex dump reads "FVW1")
- *   4   2  u16 version = 1
+ * header, 26 + modelLen bytes
+ *   0   4  magic "FVW2"            (raw bytes, so a hex dump reads "FVW2")
+ *   4   2  u16 version = 2
  *   6   2  u16 flags = 0           (reserved)
  *   8   8  u64 baseSequence        (FVS2 snapshot sequence this log applies on top of; 0 = none)
  *   16  4  u32 dims
- *   20  4  u32 headerCrc = crc32(bytes[0..20))
+ *   20  2  u16 modelLen
+ *   22  n  model id UTF-8, modelLen bytes (the embedding model; empty = unknown)
+ *   22+n 4 u32 headerCrc = crc32(bytes[0..22+n))
  * records, repeated until EOF
  *   u32 payloadLen
  *   u32 payloadCrc = crc32(payload)
@@ -26,6 +28,11 @@
  *     insert only: f32[dims] vector, u32 textLen, text UTF-8
  * ```
  *
+ * The model id lets a store whose data lives only in the log (killed before
+ * its first checkpoint) refuse to be reopened with a different embedding model
+ * of the same width, exactly as an FVS2 snapshot's meta does. FVW1 (the 24-byte
+ * header without a model id) never shipped and is rejected as `bad-header`.
+ *
  * ## Torn tails are normal
  * A tab killed mid-append leaves a partial last record. {@link scanWal} treats
  * the first record that overruns the file, fails its CRC, or does not parse as
@@ -33,7 +40,7 @@
  * trusted, and the caller truncates the file back to the last good record. A
  * record is therefore applied whole or not at all — replay never sees a torn
  * record. Only a bad *header* is an error ({@link WalCorruptError}), because
- * then the log's base and geometry are unknowable.
+ * then the log's base, geometry and model are unknowable.
  *
  * Pure: no DOM, no Worker, no wasm.
  */
@@ -46,32 +53,40 @@ export type WalRecord =
   | { kind: 'insert'; id: string; vector: Float32Array; text: string }
   | { kind: 'remove'; id: string };
 
-/** The decoded {@link WAL_HEADER_LEN}-byte log header. */
+/** The decoded log header. */
 export interface WalHeader {
   /** The FVS2 snapshot sequence the records apply on top of (`0n` = no snapshot). */
   baseSequence: bigint;
   /** Vector dimensionality of every insert record. */
   dims: number;
+  /** Embedding model id the records were embedded with (`''` = unknown). */
+  model: string;
+  /** Size of the header on disk, in bytes (where the first record starts). */
+  length: number;
 }
 
 /** Result of {@link scanWal}. */
 export interface WalScan {
   /** Every complete, checksummed record, in log order. */
   records: WalRecord[];
-  /** Byte offset just past the last good record (≥ {@link WAL_HEADER_LEN}). */
+  /** Byte offset just past the last good record (≥ the header length). */
   validLength: number;
   /** `true` when bytes follow {@link validLength} (a torn or corrupt tail). */
   truncatedTail: boolean;
 }
 
-/** Size of the fixed log header, in bytes. */
-export const WAL_HEADER_LEN = 24;
+/** Size of the smallest possible log header (empty model id), in bytes. */
+export const WAL_MIN_HEADER_LEN = 26;
+/** Offset of the u16 `modelLen` field (the fixed part of the header ends here). */
+const MODEL_LEN_OFFSET = 20;
+/** Offset of the model id bytes. */
+const MODEL_OFFSET = 22;
 /** Size of a record's `payloadLen` + `payloadCrc` prefix, in bytes. */
 const RECORD_PREFIX_LEN = 8;
 
-/** `"FVW1"` as raw bytes. */
-const MAGIC = [0x46, 0x56, 0x57, 0x31] as const;
-const VERSION = 1;
+/** `"FVW2"` as raw bytes. */
+const MAGIC = [0x46, 0x56, 0x57, 0x32] as const;
+const VERSION = 2;
 const KIND_INSERT = 1;
 const KIND_REMOVE = 2;
 const MAX_ID_BYTES = 0xffff;
@@ -80,34 +95,70 @@ const encoder = new TextEncoder();
 /** Fatal, so a malformed UTF-8 payload is a stop condition rather than U+FFFD. */
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
-/** Encode the 24-byte log header. */
-export function encodeWalHeader(header: { baseSequence: bigint; dims: number }): Uint8Array {
-  const bytes = new Uint8Array(WAL_HEADER_LEN);
+/** Encode the log header. Throws if the model id exceeds 65535 UTF-8 bytes. */
+export function encodeWalHeader(header: { baseSequence: bigint; dims: number; model: string }): Uint8Array {
+  const model = encoder.encode(header.model);
+  if (model.length > MAX_ID_BYTES) {
+    throw new RangeError(`[ferrovec] model id is ${model.length} UTF-8 bytes; the log allows at most ${MAX_ID_BYTES}`);
+  }
+  const crcAt = MODEL_OFFSET + model.length;
+  const bytes = new Uint8Array(crcAt + 4);
   const view = new DataView(bytes.buffer);
   bytes.set(MAGIC, 0);
   view.setUint16(4, VERSION, true);
   view.setUint16(6, 0, true);
   view.setBigUint64(8, header.baseSequence, true);
   view.setUint32(16, header.dims, true);
-  view.setUint32(20, crc32(bytes.subarray(0, 20)), true);
+  view.setUint16(MODEL_LEN_OFFSET, model.length, true);
+  bytes.set(model, MODEL_OFFSET);
+  view.setUint32(crcAt, crc32(bytes.subarray(0, crcAt)), true);
   return bytes;
+}
+
+/**
+ * The header length a log *claims*, from its magic, version and `modelLen`
+ * alone (no checksum), or `null` if `bytes` does not start like an FVW2 header.
+ * Lets open tell a header whose write was cut short (the file ends inside the
+ * declared header: nothing was ever logged after it) from a corrupt one.
+ */
+export function declaredWalHeaderLength(bytes: Uint8Array): number | null {
+  if (bytes.length < MODEL_OFFSET) return null;
+  for (let i = 0; i < MAGIC.length; i++) if (bytes[i] !== MAGIC[i]) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, MODEL_OFFSET);
+  if (view.getUint16(4, true) !== VERSION) return null;
+  return MODEL_OFFSET + view.getUint16(MODEL_LEN_OFFSET, true) + 4;
 }
 
 /** Decode and validate the log header. Throws `WalCorruptError('bad-header')`. */
 export function decodeWalHeader(bytes: Uint8Array): WalHeader {
-  if (bytes.length < WAL_HEADER_LEN) {
+  if (bytes.length < WAL_MIN_HEADER_LEN) {
     throw new WalCorruptError('bad-header', `short header (${bytes.length} bytes)`);
   }
   for (let i = 0; i < MAGIC.length; i++) {
     if (bytes[i] !== MAGIC[i]) throw new WalCorruptError('bad-header', 'bad magic');
   }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, WAL_HEADER_LEN);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const version = view.getUint16(4, true);
   if (version !== VERSION) throw new WalCorruptError('bad-header', `unsupported version ${version}`);
-  if (view.getUint32(20, true) !== crc32(bytes.subarray(0, 20))) {
+  const crcAt = MODEL_OFFSET + view.getUint16(MODEL_LEN_OFFSET, true);
+  if (bytes.length < crcAt + 4) {
+    throw new WalCorruptError('bad-header', `short header (${bytes.length} of ${crcAt + 4} bytes)`);
+  }
+  if (view.getUint32(crcAt, true) !== crc32(bytes.subarray(0, crcAt))) {
     throw new WalCorruptError('bad-header', 'header checksum mismatch');
   }
-  return { baseSequence: view.getBigUint64(8, true), dims: view.getUint32(16, true) };
+  let model: string;
+  try {
+    model = decoder.decode(bytes.subarray(MODEL_OFFSET, crcAt));
+  } catch {
+    throw new WalCorruptError('bad-header', 'model id is not valid UTF-8');
+  }
+  return {
+    baseSequence: view.getBigUint64(8, true),
+    dims: view.getUint32(16, true),
+    model,
+    length: crcAt + 4,
+  };
 }
 
 /**
@@ -191,10 +242,10 @@ function decodePayload(payload: Uint8Array, dims: number): WalRecord | null {
  * fails its CRC, or is malformed. Never throws for a torn tail.
  */
 export function scanWal(bytes: Uint8Array, dims: number): WalScan {
-  decodeWalHeader(bytes);
+  const header = decodeWalHeader(bytes);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const records: WalRecord[] = [];
-  let off = WAL_HEADER_LEN;
+  let off = header.length;
   while (off < bytes.length) {
     if (off + RECORD_PREFIX_LEN > bytes.length) break;
     const payloadLen = view.getUint32(off, true);

@@ -12,9 +12,12 @@
  *
  * Durability test hooks (only legal while no store is open in this worker):
  * `corrupt` truncates one slot file (or `wal.bin`) in place (a simulated torn
- * write), `slots` reports each slot's size, decoded sequence and count plus the
- * write-ahead log's size, base sequence and record count, and `destroy` mirrors
- * the production worker's store deletion. `open` also reports every
+ * write), `readFile` / `writeFile` read and replace one store file's bytes (to
+ * put back a log as it was before a checkpoint, i.e. a checkpoint whose log
+ * reset never ran), `slots` reports each slot's size, decoded sequence and
+ * count plus the write-ahead log's size, base sequence, model and record count,
+ * and `destroy` mirrors the production worker's store deletion. A kill without
+ * `close` is the page terminating this worker. `open` also reports every
  * `console.warn` the store emitted while opening (e.g. a torn log tail cut off),
  * which the chaos harness counts.
  */
@@ -87,6 +90,8 @@ interface Req {
   slot?: 'a' | 'b' | 'wal';
   /** `corrupt`: new length of the file. */
   truncateTo?: number;
+  /** `writeFile`: the file's new contents. */
+  bytes?: Uint8Array;
   // ---- fault-injection knobs (used by coord-defects.test.ts) ----
   /** Make the next N `makeEngine` calls throw (tests leader-init/promotion failure). */
   failEngineTimes?: number;
@@ -176,19 +181,33 @@ async function storeDir(name: string): Promise<FileSystemDirectoryHandle> {
 }
 
 interface SyncHandle {
+  write(buffer: Uint8Array, options: { at: number }): number;
   truncate(n: number): void;
   flush(): void;
   close(): void;
 }
 
+/**
+ * An exclusive sync handle on one store file. A just-terminated worker's
+ * handles are released asynchronously, so retry briefly while still locked.
+ */
+async function syncHandle(req: Req): Promise<SyncHandle> {
+  const dir = await storeDir(req.name ?? 'test');
+  const file = await dir.getFileHandle(req.slot === 'wal' ? 'wal.bin' : `slot-${req.slot ?? 'a'}.bin`);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await (file as unknown as { createSyncAccessHandle(): Promise<SyncHandle> }).createSyncAccessHandle();
+    } catch (err) {
+      if (attempt >= 100) throw err;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+}
+
 /** Test hook: truncate a slot file (or the log) in place, simulating a torn write. */
 async function corrupt(req: Req): Promise<{ corrupted: true }> {
   if (store) throw new Error('corrupt is only legal with no store open in this worker');
-  const dir = await storeDir(req.name ?? 'test');
-  const file = await dir.getFileHandle(req.slot === 'wal' ? 'wal.bin' : `slot-${req.slot ?? 'a'}.bin`);
-  const handle = await (
-    file as unknown as { createSyncAccessHandle(): Promise<SyncHandle> }
-  ).createSyncAccessHandle();
+  const handle = await syncHandle(req);
   try {
     handle.truncate(req.truncateTo ?? 0);
     handle.flush();
@@ -196,6 +215,29 @@ async function corrupt(req: Req): Promise<{ corrupted: true }> {
     handle.close();
   }
   return { corrupted: true };
+}
+
+/** Test hook: one store file's bytes (`slot` names it, as for `corrupt`). */
+async function readFile(req: Req): Promise<{ bytes: Uint8Array }> {
+  if (store) throw new Error('readFile is only legal with no store open in this worker');
+  const dir = await storeDir(req.name ?? 'test');
+  const bytes = await readStoreFile(dir, req.slot === 'wal' ? 'wal.bin' : `slot-${req.slot ?? 'a'}.bin`);
+  return { bytes: bytes ?? new Uint8Array(0) };
+}
+
+/** Test hook: replace one store file's contents. */
+async function writeFile(req: Req): Promise<{ written: number }> {
+  if (store) throw new Error('writeFile is only legal with no store open in this worker');
+  const handle = await syncHandle(req);
+  const bytes = req.bytes ?? new Uint8Array(0);
+  try {
+    handle.truncate(0);
+    const written = handle.write(bytes, { at: 0 });
+    handle.flush();
+    return { written };
+  } finally {
+    handle.close();
+  }
 }
 
 interface SlotInfo {
@@ -207,6 +249,8 @@ interface WalInfo {
   size: number;
   /** Header base sequence; `null` when the log has no valid header. */
   base: number | null;
+  /** Header model id (`''` = none recorded); `null` when the log has no valid header. */
+  model: string | null;
   records: number;
 }
 
@@ -247,10 +291,11 @@ async function slots(req: Req): Promise<{ a: SlotInfo; b: SlotInfo; wal: WalInfo
     out[slot] = { size: bytes.length, sequence, count };
   }
   const walBytes = (await readStoreFile(dir, 'wal.bin')) ?? new Uint8Array(0);
-  const wal: WalInfo = { size: walBytes.length, base: null, records: 0 };
+  const wal: WalInfo = { size: walBytes.length, base: null, model: null, records: 0 };
   try {
     const header = decodeWalHeader(walBytes);
     wal.base = Number(header.baseSequence);
+    wal.model = header.model;
     wal.records = scanWal(walBytes, header.dims).records.length;
   } catch {
     /* empty / header-less log */
@@ -281,6 +326,10 @@ async function handle(req: Req): Promise<unknown> {
     }
     case 'corrupt':
       return corrupt(req);
+    case 'readFile':
+      return readFile(req);
+    case 'writeFile':
+      return writeFile(req);
     case 'slots':
       return slots(req);
     case 'destroy':

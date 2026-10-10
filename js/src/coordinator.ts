@@ -87,12 +87,16 @@
  * compares that against {@link CoordinatorOptions.expectedModel} right after
  * opening the store and **before** building the engine, so a mismatch fails
  * fast (no model download) with an `EmbeddingSpaceMismatchError`, and the store
- * is closed without ever having been written to.
+ * is closed without ever having been written to. A store killed before its
+ * first checkpoint has no snapshot, but its write-ahead log header records the
+ * model too ({@link PersistentStore.walModel}); it is checked the same way.
+ * When a snapshot exists its meta is authoritative (the store refuses to open
+ * if a log to be replayed on top of it names a different model).
  */
 
 import { openStore, type PersistentStore } from './persistence.ts';
 import { EmbeddingSpaceMismatchError } from './errors.ts';
-import type { SnapshotMeta } from './snapshot.ts';
+import type { EmbeddingSpace, SnapshotMeta } from './snapshot.ts';
 import { createCoreFromBytes } from './core-loader.ts';
 import type { Engine } from './engine.ts';
 import type { Durability, QueryResult, VectorCore } from './types.ts';
@@ -631,7 +635,13 @@ export class Coordinator {
 
     try {
       const snap = store.initialSnapshot;
-      const storedSpace = snap?.meta?.embeddingSpace;
+      // The snapshot meta is authoritative; with none (killed before the first
+      // checkpoint), the log header names the model its records came from.
+      const storedSpace: EmbeddingSpace | undefined =
+        snap?.meta?.embeddingSpace ??
+        (store.walModel !== null
+          ? { model: store.walModel, dims: store.walDims ?? 0, metric: 'cosine' }
+          : undefined);
       if (storedSpace && this.#expectedModel !== undefined && storedSpace.model !== this.#expectedModel) {
         // Fail fast, before makeEngine downloads a model. bind() has not run, so
         // the store has no snapshot producer and the store.close() in the catch
@@ -660,7 +670,8 @@ export class Coordinator {
         replay: store.initialReplay,
         persister: store,
       });
-      store.bind(() => engine.snapshot(), { dims: engine.embeddingSpace.dims });
+      const space = engine.embeddingSpace;
+      store.bind(() => engine.snapshot(), { dims: space.dims, model: space.model });
       this.#engine = engine;
       this.#persistent = store.persistent;
     } catch (err) {

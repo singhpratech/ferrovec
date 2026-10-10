@@ -60,11 +60,21 @@
  * ## Safety rails
  *
  * - If slots exist but none decodes, open throws `StoreCorruptError` — it never
- *   silently starts empty over corrupt data. The one exception is a single torn
- *   slot next to an empty one with an intact legacy `index.bin` (an interrupted
- *   first migration commit): the legacy file is migrated again. A log with an
- *   unreadable header is ignored (with a warning) only when a valid snapshot
- *   exists to fall back on.
+ *   silently starts empty over corrupt data. The exceptions are a single torn
+ *   slot next to an empty one (an interrupted *first* checkpoint) when what it
+ *   was checkpointing is still intact elsewhere: an intact legacy `index.bin`
+ *   (an interrupted first migration commit) is migrated again; otherwise a log
+ *   based on "no snapshot" (`baseSequence` 0) still holds every acknowledged
+ *   write since the store was created, so the store opens as fresh and the log
+ *   is replayed. Both warn once, naming the torn slot. A log with base > 0, or
+ *   none, means the torn slot held data that exists nowhere else: refuse. A log
+ *   with an unreadable header is ignored (with a warning) only when a valid
+ *   snapshot exists to fall back on.
+ * - The log header names the embedding model its records were embedded with,
+ *   so a store killed before its first checkpoint still carries the model
+ *   guard (see `coordinator.ts`). When a snapshot exists its meta is
+ *   authoritative; a log about to be replayed on top of it that names a
+ *   different model is refused (`StoreCorruptError`, `wal-model-mismatch`).
  * - A checkpoint that would replace a non-empty on-disk index with an empty
  *   one, when nothing was removed since open (replayed removes count), throws
  *   `EmptyOverwriteRefusedError` and writes nothing (the signature of a failed
@@ -96,11 +106,13 @@ import {
 } from './snapshot.ts';
 import type { Durability, Persister } from './types.ts';
 import {
-  WAL_HEADER_LEN,
+  WAL_MIN_HEADER_LEN,
+  declaredWalHeaderLength,
   decodeWalHeader,
   encodeWalHeader,
   encodeWalRecord,
   scanWal,
+  type WalHeader,
   type WalRecord,
 } from './wal.ts';
 
@@ -186,14 +198,22 @@ export interface PersistentStore extends Persister {
   readonly initialReplay: WalRecord[];
   /** The dims recorded in the log header found at open, or `null` if none was kept. */
   readonly walDims: number | null;
+  /**
+   * The embedding model id recorded in the log header found at open, or `null`
+   * if no log was kept or its header names no model. Checked against the
+   * requested model when there is no snapshot meta to check.
+   */
+  readonly walModel: string | null;
   /** Live items in the on-disk index; `-1` when unknown (a legacy raw core with no text sidecar). */
   readonly onDiskCount: number;
   /**
    * Supply the function that produces the snapshot contents on demand, and the
-   * index dims (so a log header can be written even when the first logged
-   * mutation of a fresh store is a remove, which carries no vector).
+   * index dims and embedding model id (so a log header can be written before
+   * the first checkpoint: dims even when the first logged mutation of a fresh
+   * store is a remove, which carries no vector; the model so the log carries
+   * the embedding-space guard).
    */
-  bind(source: () => SnapshotSource, options?: { dims?: number }): void;
+  bind(source: () => SnapshotSource, options?: { dims?: number; model?: string }): void;
 }
 
 /** The files a store may touch inside its directory. */
@@ -273,6 +293,7 @@ interface WalResolution {
   /** Byte length of the valid log on disk (`0` = no header; written lazily). */
   walEnd: number;
   walDims: number | null;
+  walModel: string | null;
 }
 
 /** The validated state {@link SlotStore.open} hands the constructor. */
@@ -291,6 +312,7 @@ export class SlotStore implements PersistentStore {
   readonly initialSnapshot: DecodedSnapshot | null;
   readonly initialReplay: WalRecord[];
   readonly walDims: number | null;
+  readonly walModel: string | null;
 
   readonly #fs: SlotFileSystem;
   readonly #handles: Record<SlotName, SlotFile>;
@@ -310,10 +332,14 @@ export class SlotStore implements PersistentStore {
   #source: (() => SnapshotSource) | null = null;
   /** Index dims supplied at bind time (for a log header before any insert). */
   #bindDims: number | null = null;
+  /** Embedding model id supplied at bind time (for the log header). */
+  #bindModel: string | null = null;
   /** End of the valid log on disk; `0` means no header yet (written lazily). */
   #walEnd: number;
   /** Dims of the log header on disk (`null` until one is read or written). */
   #headerDims: number | null;
+  /** Model id of the log header on disk (`null` until one is read or written; `''` = unknown). */
+  #headerModel: string | null;
   /** Records in the log since the last checkpoint (replayed ones included). */
   #walRecords: number;
   /** Relaxed mode: bytes written to the log but not yet flushed. */
@@ -341,8 +367,10 @@ export class SlotStore implements PersistentStore {
     this.initialSnapshot = init.initialSnapshot;
     this.initialReplay = init.initialReplay;
     this.walDims = init.walDims;
+    this.walModel = init.walModel;
     this.#walEnd = init.walEnd;
     this.#headerDims = init.walDims;
+    this.#headerModel = init.walModel;
     this.#walRecords = init.initialReplay.length;
     // Replayed removes are removes since the last checkpoint: without counting
     // them, a log that legitimately empties the index would trip the
@@ -360,10 +388,11 @@ export class SlotStore implements PersistentStore {
 
   /**
    * Open both slots, decode each, and pick the valid one with the highest
-   * sequence (falling back to the legacy `index.bin`, see
-   * {@link resolveSnapshot}); then open the log and decide, from its
-   * `baseSequence`, whether to replay it, discard it, or refuse to open (see the
-   * module header). Any handle opened here is closed again if open fails.
+   * sequence (falling back to the legacy `index.bin` or, for a torn first
+   * checkpoint, to the log, see {@link resolveSnapshot}); then decide, from the
+   * log's `baseSequence`, whether to replay it, discard it, or refuse to open
+   * (see the module header). Any handle opened here is closed again if open
+   * fails.
    */
   static async open(fs: SlotFileSystem, opts: SlotStoreOptions = {}): Promise<SlotStore> {
     const storeName = opts.name ?? '';
@@ -376,11 +405,11 @@ export class SlotStore implements PersistentStore {
       if (!a || !b) throw new Error('[ferrovec] slot file could not be opened');
       const handles: Record<SlotName, SlotFile> = { 'slot-a.bin': a, 'slot-b.bin': b };
 
-      const snapshot = await resolveSnapshot(fs, handles, storeName);
-
       const wal = await fs.open('wal.bin');
       if (!wal) throw new Error('[ferrovec] wal.bin could not be opened');
       opened.push(wal);
+
+      const snapshot = await resolveSnapshot(fs, handles, wal, storeName);
       const log = resolveWal(wal, snapshot, storeName);
 
       return new SlotStore(fs, opts, { handles, wal, ...snapshot, ...log });
@@ -400,18 +429,23 @@ export class SlotStore implements PersistentStore {
     return this.#onDiskCount;
   }
 
-  bind(source: () => SnapshotSource, options: { dims?: number } = {}): void {
+  bind(source: () => SnapshotSource, options: { dims?: number; model?: string } = {}): void {
     this.#source = source;
     this.#bindDims = options.dims ?? null;
+    this.#bindModel = options.model ?? null;
   }
 
   async append(record: WalRecord): Promise<void> {
     if (this.#closed) throw new Error('[ferrovec] store is closed');
     if (this.#walEnd === 0) {
       // Fresh (or just-discarded) log: write its header first, based on the
-      // newest committed snapshot.
+      // newest committed snapshot. The coordinator binds before any append, so
+      // the model is known here; a header written without one (an append before
+      // bind) names no model, and the next checkpoint rewrites it with the
+      // snapshot's, exactly as it does for dims.
       const dims = record.kind === 'insert' ? record.vector.length : (this.#bindDims ?? this.#headerDims);
-      this.#writeWalHeader(this.#nextSequence - 1n, dims);
+      const model = this.#bindModel ?? this.#headerModel ?? '';
+      this.#writeWalHeader(this.#nextSequence - 1n, dims, model);
     }
     const bytes = encodeWalRecord(record, this.#headerDims!);
     this.#writeWalAt(bytes, this.#walEnd);
@@ -527,15 +561,17 @@ export class SlotStore implements PersistentStore {
   }
 
   /** Replace the log with a bare header (`truncate(0)` + write). Does not flush. */
-  #writeWalHeader(baseSequence: bigint, dims: number | null): void {
+  #writeWalHeader(baseSequence: bigint, dims: number | null, model: string): void {
     if (!dims) {
       throw new Error('[ferrovec] cannot start the write-ahead log: the index dims are unknown');
     }
+    const header = encodeWalHeader({ baseSequence, dims, model });
     this.#wal.truncate(0);
     this.#walEnd = 0;
-    this.#writeWalAt(encodeWalHeader({ baseSequence, dims }), 0);
-    this.#walEnd = WAL_HEADER_LEN;
+    this.#writeWalAt(header, 0);
+    this.#walEnd = header.length;
     this.#headerDims = dims;
+    this.#headerModel = model;
     this.#walRecords = 0;
   }
 
@@ -596,7 +632,7 @@ export class SlotStore implements PersistentStore {
     // stale log (which open would discard as B < S).
     this.#walEnd = 0;
     this.#walRecords = 0;
-    this.#writeWalHeader(sequence, meta.embeddingSpace.dims);
+    this.#writeWalHeader(sequence, meta.embeddingSpace.dims, meta.embeddingSpace.model);
     this.#wal.flush();
     this.#walUnflushed = false;
 
@@ -611,13 +647,18 @@ export class SlotStore implements PersistentStore {
 
 /**
  * Pick the snapshot to load: the valid slot with the highest sequence; else,
- * when both slots are empty (or exactly one is torn and the other empty — an
- * interrupted first migration), the legacy `index.bin`. Throws
- * {@link StoreCorruptError} rather than starting empty over undecodable data.
+ * when both slots are empty, the legacy `index.bin` (or nothing: a fresh
+ * store). Exactly one torn slot next to an empty one is an interrupted first
+ * checkpoint: it is recovered from the legacy `index.bin` (an interrupted
+ * first migration) or, failing that, from a log based on "no snapshot"
+ * (`baseSequence` 0), which still holds every acknowledged write. Otherwise
+ * throws {@link StoreCorruptError} rather than starting empty over
+ * undecodable data.
  */
 async function resolveSnapshot(
   fs: SlotFileSystem,
   handles: Record<SlotName, SlotFile>,
+  wal: SlotFile,
   storeName: string,
 ): Promise<SnapshotResolution> {
   const probes = (['slot-a.bin', 'slot-b.bin'] as const).map((file): SlotProbe => {
@@ -655,8 +696,7 @@ async function resolveSnapshot(
     // If that commit was migrating a legacy index.bin, the legacy file is
     // still intact (it is removed only after a successful commit), so
     // migrate from it again; the torn slot is overwritten or superseded by
-    // the next commit. A fresh store whose first commit was torn has no
-    // legacy file and stays an explicit error.
+    // the next commit.
     let legacy: DecodedSnapshot | null;
     try {
       legacy = await readLegacy(fs, storeName);
@@ -666,8 +706,22 @@ async function resolveSnapshot(
       }
       throw err;
     }
-    if (!legacy) throw new StoreCorruptError(storeName, slotReasons);
     const torn = slotReasons.find((s) => s.reason !== 'empty');
+    if (!legacy) {
+      // A fresh store whose first checkpoint was torn (tab killed mid-close
+      // or mid-threshold-checkpoint). A checkpoint resets the log only after
+      // its snapshot is durable, so a log still based on "no snapshot" holds
+      // every acknowledged write since the store was created: open as fresh
+      // and replay it. Without such a log (none, header-less, or based on a
+      // later snapshot) the torn slot held data that exists nowhere else.
+      if (readWalHeader(wal)?.baseSequence !== 0n) throw new StoreCorruptError(storeName, slotReasons);
+      console.warn(
+        `[ferrovec] store "${storeName}": found a torn ${torn?.file} (${torn?.reason}) ` +
+          `and no other snapshot; the first checkpoint was interrupted, so the ` +
+          `write-ahead log (which still holds every acknowledged write) is replayed instead`,
+      );
+      return { current: null, initialSnapshot: null, nextSequence: 1n, migrateFromLegacy: false };
+    }
     console.warn(
       `[ferrovec] store "${storeName}": found a torn ${torn?.file} (${torn?.reason}) ` +
         `and no other snapshot; the first migration commit was interrupted, so ` +
@@ -681,6 +735,20 @@ async function resolveSnapshot(
   return { current: null, initialSnapshot: legacy, nextSequence: 1n, migrateFromLegacy: legacy !== null };
 }
 
+/**
+ * The log's header if it has a complete, valid one; `null` when it is empty,
+ * its header write was cut short, or the header is unreadable.
+ */
+function readWalHeader(wal: SlotFile): WalHeader | null {
+  if (wal.getSize() < WAL_MIN_HEADER_LEN) return null;
+  try {
+    return decodeWalHeader(readAll(wal));
+  } catch (err) {
+    if (err instanceof WalCorruptError) return null;
+    throw err;
+  }
+}
+
 /** Truncate the log to nothing (its header is rewritten lazily on the next append). */
 function resetWal(wal: SlotFile): void {
   wal.truncate(0);
@@ -691,15 +759,27 @@ function resetWal(wal: SlotFile): void {
  * Decide what the log means relative to the chosen snapshot (`S` = its
  * sequence, `0n` for none / legacy; `B` = the log's `baseSequence`): replay
  * (`B === S`), discard (`B < S`), or refuse (`B > S`). A torn tail is cut off.
+ * A log to be replayed must name the same model as the snapshot meta (when
+ * both name one).
  */
 function resolveWal(wal: SlotFile, snapshot: SnapshotResolution, storeName: string): WalResolution {
-  const empty: WalResolution = { initialReplay: [], walEnd: 0, walDims: null };
+  const empty: WalResolution = { initialReplay: [], walEnd: 0, walDims: null, walModel: null };
   // A log shorter than its header never got a complete header: nothing was
-  // ever logged into it. The next append rewrites it from scratch.
-  if (wal.getSize() < WAL_HEADER_LEN) return empty;
+  // ever logged into it (records are appended only after the header write
+  // returns). The next append rewrites it from scratch.
+  if (wal.getSize() < WAL_MIN_HEADER_LEN) return empty;
 
   const bytes = readAll(wal);
-  let header: { baseSequence: bigint; dims: number };
+  const declared = declaredWalHeaderLength(bytes);
+  if (declared !== null && bytes.length < declared) {
+    // Same, for a header whose model id is cut off: the file ends inside it.
+    console.warn(
+      `[ferrovec] store "${storeName}": wal.bin ends inside its header (${bytes.length} of ` +
+        `${declared} bytes); the header write was interrupted before anything was logged`,
+    );
+    return empty;
+  }
+  let header: WalHeader;
   try {
     header = decodeWalHeader(bytes);
   } catch (err) {
@@ -731,6 +811,13 @@ function resolveWal(wal: SlotFile, snapshot: SnapshotResolution, storeName: stri
   if (B > S) {
     throw new StoreCorruptError(storeName, [{ file: 'wal.bin', reason: 'wal-ahead-of-snapshot' }]);
   }
+  // The snapshot meta is authoritative for the embedding space; a log about to
+  // be replayed on top of it was written by the same engine, so a different
+  // model there means the files do not belong together.
+  const snapshotModel = snapshot.initialSnapshot?.meta?.embeddingSpace.model;
+  if (snapshotModel !== undefined && header.model !== '' && header.model !== snapshotModel) {
+    throw new StoreCorruptError(storeName, [{ file: 'wal.bin', reason: 'wal-model-mismatch' }]);
+  }
 
   const scan = scanWal(bytes, header.dims);
   if (scan.truncatedTail) {
@@ -742,7 +829,12 @@ function resolveWal(wal: SlotFile, snapshot: SnapshotResolution, storeName: stri
         `mid-append, never applied`,
     );
   }
-  return { initialReplay: scan.records, walEnd: scan.validLength, walDims: header.dims };
+  return {
+    initialReplay: scan.records,
+    walEnd: scan.validLength,
+    walDims: header.dims,
+    walModel: header.model === '' ? null : header.model,
+  };
 }
 
 /** Decode one non-empty slot. Slots are only ever written as FVS2. */
@@ -838,6 +930,7 @@ function inMemoryStore(): PersistentStore {
     initialSnapshot: null,
     initialReplay: [],
     walDims: null,
+    walModel: null,
     onDiskCount: 0,
     bind() {},
     async append() {},

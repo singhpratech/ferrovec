@@ -25,6 +25,10 @@ import { decodeSnapshot } from '../src/snapshot.ts';
 import { decodeWalHeader, encodeWalHeader, encodeWalRecord, scanWal, type WalRecord } from '../src/wal.ts';
 
 const DIMS = 32;
+/** The model every test snapshot (and bind) names. */
+const MODEL = 'fake-fnv1a-32';
+/** A bare FVW2 log header naming {@link MODEL}: 26 fixed bytes + the model id. */
+const HDR = encodeWalHeader({ baseSequence: 0n, dims: DIMS, model: MODEL }).length;
 
 class MemFS implements SlotFileSystem {
   readonly files = new Map<string, Uint8Array>();
@@ -150,7 +154,7 @@ function producer(state: { count: number }): () => SnapshotSource {
     core: fakeCore(state.count),
     texts: new Map(Array.from({ length: state.count }, (_, i) => [`id-${i}`, `text ${i}`] as [string, string])),
     meta: {
-      embeddingSpace: { model: 'fake-fnv1a-32', dims: DIMS, metric: 'cosine' },
+      embeddingSpace: { model: MODEL, dims: DIMS, metric: 'cosine' },
       count: state.count,
       writer: 'test',
       createdAt: 0,
@@ -207,7 +211,7 @@ test('fresh open alternates slot-a / slot-b with increasing sequence', async () 
   await commit(store);
   assert.equal(fs.seq('slot-a.bin'), 1n);
   assert.equal(fs.files.get('slot-b.bin')!.length, 0);
-  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: 24 }, 'log reset onto seq 1 after the checkpoint');
+  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: HDR }, 'log reset onto seq 1 after the checkpoint');
 
   state.count = 2;
   await commit(store);
@@ -269,7 +273,7 @@ test('crash during checkpoint write (slot torn) → open picks the old snapshot 
   reopened.bind(producer({ count: 3 }));
   await reopened.flush(); // the replayed records alone warrant a checkpoint
   assert.equal(fs.seq('slot-a.bin'), 3n, 'the next commit overwrites the torn slot');
-  assert.deepEqual(fs.wal(), { base: 3n, records: [], size: 24 });
+  assert.deepEqual(fs.wal(), { base: 3n, records: [], size: HDR });
   assert.equal(fs.seq('slot-b.bin'), 2n);
   await reopened.close();
 });
@@ -370,7 +374,7 @@ test('close() checkpoints logged records before closing all three handles', asyn
   assert.ok(flushAt < fs.log.indexOf('close slot-a.bin'), 'checkpoint precedes handle close');
   assert.ok(flushAt < fs.log.indexOf('close slot-b.bin'));
   assert.ok(fs.log.lastIndexOf('flush wal.bin') < fs.log.indexOf('close wal.bin'));
-  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: 24 });
+  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: HDR });
   assert.equal(fs.open_.size, 0);
   await store.close(); // idempotent
 });
@@ -451,7 +455,7 @@ test('torn first migration commit (torn slot-a, empty slot-b, intact FVS1 index.
   assert.equal(fs.open_.size, 0);
 });
 
-test('torn slot-b + empty slot-a + no index.bin → StoreCorruptError (a torn fresh store stays an error)', async () => {
+test('torn slot-b + empty slot-a + no index.bin + no log → StoreCorruptError (nothing to recover from)', async () => {
   const fs = new MemFS();
   fs.files.set('slot-b.bin', new Uint8Array([0x46, 0x56, 0x53, 0x32, 0, 2, 0, 0, 0, 0]));
   await assert.rejects(open(fs), (err: unknown) => {
@@ -713,7 +717,7 @@ test('checkpoint thresholds trigger: records (strict), bytes (strict), records (
   state.count++;
   await tick(); // the threshold checkpoint runs after the acknowledgement
   assert.equal(fs.seq('slot-a.bin'), 1n, 'the 4th record triggered a checkpoint');
-  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: 24 });
+  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: HDR });
   await store.close();
 
   // Bytes: each insert record is 8 + 1 + 2 + 2 + 128 + 4 + text ≈ 160 bytes.
@@ -757,7 +761,7 @@ test('strict threshold checkpoint runs after the acknowledgement, not inside it;
   assert.equal(fs.wal().records.length, 3, 'the record that tripped the threshold is already in the log');
   await tick();
   assert.equal(fs.seq('slot-a.bin'), 1n, 'the checkpoint landed after a macrotask');
-  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: 24 }, 'and reset the log');
+  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: HDR }, 'and reset the log');
   await store.close(); // nothing logged since: no second checkpoint
   assert.equal(fs.count('write slot-a.bin') + fs.count('write slot-b.bin'), 1);
 
@@ -772,7 +776,7 @@ test('strict threshold checkpoint runs after the acknowledgement, not inside it;
   assert.equal(fsC.count('write slot-a.bin') + fsC.count('write slot-b.bin'), 1, 'exactly one checkpoint');
   assert.equal(fsC.seq('slot-a.bin'), 1n);
   assert.equal(fsC.files.get('slot-b.bin')!.length, 0);
-  assert.deepEqual(fsC.wal(), { base: 1n, records: [], size: 24 });
+  assert.deepEqual(fsC.wal(), { base: 1n, records: [], size: HDR });
 });
 
 test('close() on an untouched store writes nothing (fresh and existing)', async () => {
@@ -904,7 +908,7 @@ test('log dims different from the snapshot dims → StoreCorruptError dims-misma
   seed.bind(producer({ count: 1 }));
   await commit(seed);
   await seed.close();
-  const header = encodeWalHeader({ baseSequence: 1n, dims: 16 });
+  const header = encodeWalHeader({ baseSequence: 1n, dims: 16, model: MODEL });
   const record = encodeWalRecord({ kind: 'insert', id: 'n', vector: new Float32Array(16), text: 'n' }, 16);
   const log = new Uint8Array(header.length + record.length);
   log.set(header);
@@ -915,4 +919,241 @@ test('log dims different from the snapshot dims → StoreCorruptError dims-misma
     assert.deepEqual(err.slots, [{ file: 'wal.bin', reason: 'dims-mismatch' }]);
     return true;
   });
+});
+
+// ---- torn first checkpoint: recovered from a log based on "no snapshot" -------
+
+/** Concatenate byte arrays (a log header followed by records). */
+function cat(...parts: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let off = 0;
+  for (const p of parts) {
+    out.set(p, off);
+    off += p.length;
+  }
+  return out;
+}
+
+test('torn first checkpoint of a fresh store (only slot torn, log still based on 0) → opens fresh, replays the log', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const fs = new MemFS();
+  const store = await open(fs);
+  const state = { count: 0 };
+  store.bind(producer(state), { dims: DIMS, model: MODEL });
+  const ids = ['a', 'b', 'c', 'd', 'e'];
+  for (const id of ids) {
+    await store.append(ins(id));
+    state.count++;
+  }
+  // The disk just before the first checkpoint's step (b): the log is still
+  // based on "no snapshot" and holds every acknowledged write.
+  const preCheckpointLog = fs.files.get('wal.bin')!.slice();
+  await store.flush(); // the first checkpoint: slot-a seq 1, then the log reset onto 1
+  kill(fs);
+  // Tear that checkpoint: slot-a half-written, the log reset never happened.
+  const slotA = fs.files.get('slot-a.bin')!;
+  fs.files.set('slot-a.bin', slotA.slice(0, Math.floor(slotA.length / 2)));
+  fs.files.set('wal.bin', preCheckpointLog);
+  assert.throws(() => fs.seq('slot-a.bin'), 'slot-a is torn');
+  assert.equal(fs.files.get('slot-b.bin')!.length, 0, 'the only slot');
+  assert.equal(fs.wal().base, 0n);
+
+  const reopened = await open(fs);
+  assert.equal(reopened.initialSnapshot, null, 'opens as a fresh store');
+  assert.equal(reopened.nextSequence, 1n);
+  assert.equal(reopened.onDiskCount, 0);
+  assert.deepEqual(
+    reopened.initialReplay.map((r) => `${r.kind} ${r.id}`),
+    ids.map((id) => `insert ${id}`),
+    'every acknowledged write is replayed from the log',
+  );
+  assert.equal(reopened.walModel, MODEL);
+  assert.equal(warn.mock.callCount(), 1, 'warns once');
+  assert.match(String(warn.mock.calls[0]!.arguments[0]), /torn slot-a\.bin \(bad-length\)/);
+  assert.equal(fs.files.get('slot-a.bin')!.length, Math.floor(slotA.length / 2), 'open writes nothing');
+
+  reopened.bind(producer({ count: ids.length }), { dims: DIMS, model: MODEL });
+  await reopened.close(); // the replayed records warrant a checkpoint
+  assert.equal(fs.seq('slot-a.bin'), 1n, 'the next checkpoint overwrites the torn slot');
+  assert.equal(decodeSnapshot(fs.files.get('slot-a.bin')!).meta?.count, ids.length, 'count correct');
+  assert.deepEqual(fs.wal(), { base: 1n, records: [], size: HDR });
+
+  // The real crash: the kill lands inside the first checkpoint's slot write.
+  const crashed = new MemFS();
+  const first = await open(crashed);
+  first.bind(producer({ count: 3 }), { dims: DIMS, model: MODEL });
+  for (const id of ['x', 'y', 'z']) await first.append(ins(id));
+  crashed.crashOn = 'slot-a.bin';
+  crashed.crashAfterBytes = 60;
+  await assert.rejects(first.close(), /simulated tab kill/);
+  kill(crashed);
+  assert.throws(() => crashed.seq('slot-a.bin'));
+  const recovered = await open(crashed);
+  assert.equal(recovered.initialSnapshot, null);
+  assert.deepEqual(
+    recovered.initialReplay.map((r) => r.id),
+    ['x', 'y', 'z'],
+  );
+  assert.equal(warn.mock.callCount(), 2);
+  assert.match(String(warn.mock.calls[1]!.arguments[0]), /torn slot-a\.bin/);
+  await recovered.close(); // unbound: writes nothing
+});
+
+test('torn only slot with a log based on a later snapshot, a header-less log, or an unreadable one → StoreCorruptError', async () => {
+  const fs = new MemFS();
+  const store = await open(fs);
+  store.bind(producer({ count: 1 }), { dims: DIMS, model: MODEL });
+  await commit(store, 'insert', 'a'); // seq 1 → slot-a, log reset onto 1
+  await store.append(ins('b'));
+  kill(fs);
+  fs.files.set('slot-a.bin', fs.files.get('slot-a.bin')!.slice(0, 50));
+  assert.equal(fs.wal().base, 1n);
+  const slotA = fs.files.get('slot-a.bin')!.slice();
+
+  const refuses = async (what: string): Promise<void> => {
+    await assert.rejects(
+      open(fs),
+      (err: unknown) => {
+        assert.ok(err instanceof StoreCorruptError, what);
+        assert.deepEqual(
+          err.slots,
+          [
+            { file: 'slot-a.bin', reason: 'bad-length' },
+            { file: 'slot-b.bin', reason: 'empty' },
+          ],
+          what,
+        );
+        return true;
+      },
+      what,
+    );
+    assert.equal(fs.open_.size, 0, `${what}: handles closed`);
+    assert.deepEqual(fs.files.get('slot-a.bin'), slotA, `${what}: torn data left in place`);
+  };
+
+  // baseSequence > 0: the torn slot held snapshot 1, which exists nowhere else.
+  await refuses('log based on seq 1');
+  // No log, or one whose header write never completed (also inside the model id).
+  fs.files.set('wal.bin', new Uint8Array(0));
+  await refuses('empty log');
+  fs.files.set('wal.bin', encodeWalHeader({ baseSequence: 0n, dims: DIMS, model: MODEL }).slice(0, 30));
+  await refuses('header cut inside the model id');
+  fs.files.set('wal.bin', new TextEncoder().encode('definitely not a write-ahead log header'));
+  await refuses('unreadable header');
+
+  // Both slots torn stays an error, even next to a log based on 0.
+  fs.files.set('slot-b.bin', new TextEncoder().encode('not a snapshot either'));
+  fs.files.set(
+    'wal.bin',
+    cat(encodeWalHeader({ baseSequence: 0n, dims: DIMS, model: MODEL }), encodeWalRecord(ins('n'), DIMS)),
+  );
+  await assert.rejects(open(fs), (err: unknown) => {
+    assert.ok(err instanceof StoreCorruptError);
+    assert.deepEqual(
+      err.slots.map((s) => s.file),
+      ['slot-a.bin', 'slot-b.bin'],
+    );
+    return true;
+  });
+  assert.equal(fs.open_.size, 0);
+});
+
+test('crash inside the log header write (cut within the model id) → the log reads as empty, with a warning', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const fs = new MemFS();
+  const store = await open(fs);
+  store.bind(producer({ count: 1 }), { dims: DIMS, model: MODEL });
+  fs.crashOn = 'wal.bin';
+  fs.crashAfterBytes = 30; // past the fixed fields, inside the model id
+  await assert.rejects(store.append(ins('a')), /simulated tab kill/);
+  kill(fs);
+  assert.equal(fs.files.get('wal.bin')!.length, 30);
+
+  const reopened = await open(fs);
+  assert.equal(reopened.initialSnapshot, null);
+  assert.deepEqual(reopened.initialReplay, [], 'nothing was ever logged after the torn header');
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(String(warn.mock.calls[0]!.arguments[0]), /ends inside its header/);
+  reopened.bind(producer({ count: 1 }), { dims: DIMS, model: MODEL });
+  await reopened.append(ins('b'));
+  kill(fs);
+  assert.deepEqual(
+    fs.wal().records.map((r) => r.id),
+    ['b'],
+    'the next append rewrote a clean header',
+  );
+});
+
+// ---- the embedding model in the log header ----------------------------------
+
+test('the log header carries the model supplied at bind; reopen reports it as walModel', async () => {
+  const fs = new MemFS();
+  const store = await open(fs);
+  store.bind(producer({ count: 0 }), { dims: DIMS, model: MODEL });
+  await store.append(ins('a'));
+  kill(fs); // killed before any checkpoint: the log is all there is
+  assert.equal(decodeWalHeader(fs.files.get('wal.bin')!).model, MODEL);
+  const reopened = await open(fs);
+  assert.equal(reopened.initialSnapshot, null);
+  assert.equal(reopened.walModel, MODEL);
+  assert.equal(reopened.walDims, DIMS);
+  await reopened.close();
+
+  // A header written before bind names no model (walModel null) — the
+  // coordinator never does this — and the next checkpoint rewrites it with the
+  // snapshot's model, as it does for dims.
+  const early = new MemFS();
+  const e = await open(early);
+  await e.append(ins('a'));
+  assert.equal(decodeWalHeader(early.files.get('wal.bin')!).model, '');
+  kill(early);
+  const unnamed = await open(early);
+  assert.equal(unnamed.walModel, null);
+  unnamed.bind(producer({ count: 1 }));
+  await unnamed.flush();
+  assert.equal(decodeWalHeader(early.files.get('wal.bin')!).model, MODEL);
+  await unnamed.append(ins('b'));
+  kill(early);
+  const named = await open(early);
+  assert.equal(named.walModel, MODEL);
+  await named.close();
+});
+
+test('a log to be replayed that names a different model than the snapshot → StoreCorruptError wal-model-mismatch', async () => {
+  const fs = new MemFS();
+  const seed = await open(fs);
+  seed.bind(producer({ count: 1 }), { dims: DIMS, model: MODEL });
+  await commit(seed); // seq 1
+  await seed.close();
+  const record = encodeWalRecord(ins('n'), DIMS);
+
+  // Based on that snapshot (B === S), written for another model of the same width.
+  fs.files.set('wal.bin', cat(encodeWalHeader({ baseSequence: 1n, dims: DIMS, model: 'other-model' }), record));
+  await assert.rejects(open(fs), (err: unknown) => {
+    assert.ok(err instanceof StoreCorruptError);
+    assert.deepEqual(err.slots, [{ file: 'wal.bin', reason: 'wal-model-mismatch' }]);
+    assert.match(err.message, /write-ahead log/);
+    return true;
+  });
+  assert.equal(fs.open_.size, 0);
+
+  // A stale log (B < S) is discarded, never compared.
+  fs.files.set('wal.bin', cat(encodeWalHeader({ baseSequence: 0n, dims: DIMS, model: 'other-model' }), record));
+  const stale = await open(fs);
+  assert.deepEqual(stale.initialReplay, []);
+  assert.equal(stale.walModel, null);
+  await stale.close();
+
+  // A log that names no model is not compared; one naming the same model replays.
+  for (const model of ['', MODEL]) {
+    fs.files.set('wal.bin', cat(encodeWalHeader({ baseSequence: 1n, dims: DIMS, model }), record));
+    const ok = await open(fs);
+    assert.deepEqual(
+      ok.initialReplay.map((r) => r.id),
+      ['n'],
+      `model "${model}"`,
+    );
+    assert.equal(ok.walModel, model === '' ? null : model);
+    await ok.close();
+  }
 });

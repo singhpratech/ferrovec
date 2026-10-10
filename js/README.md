@@ -143,10 +143,16 @@ coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
   store's OPFS directory. A crash mid-write can only damage the slot being
   written; the previous commit survives and is recovered on the next open. If
   every non-empty slot is unreadable, `open` throws `StoreCorruptError` rather
-  than silently starting empty.
+  than silently starting empty. The exception is a new store whose *first*
+  checkpoint was torn: its log is still based on "no snapshot" and holds every
+  acknowledged write, so the store opens from the log (with a warning naming
+  the torn slot). With no such log the torn slot's data exists nowhere else,
+  and `open` still throws.
 - **Write-ahead log.** In `'strict'` mode (default) each insert/remove record,
   CRC-32 framed, is flushed to `wal.bin` before its promise resolves: the
-  acknowledgement is the durability point. Checkpoints (every 2,000 records or
+  acknowledgement is the durability point. The log's checksummed `FVW2` header
+  records its base snapshot sequence, the dimensions and the embedding model id
+  (layout: [`src/wal.ts`](https://github.com/singhpratech/ferrovec/blob/main/js/src/wal.ts)). Checkpoints (every 2,000 records or
   4 MiB, and on `flush()`/`close()`) write a full snapshot to the non-current
   slot and only then reset the log. On open the log's base sequence is compared
   with the newest valid snapshot: equal replays, older is already folded in and
@@ -161,7 +167,9 @@ coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
   **at least once** for upserts and removes.
 - **Model guard.** Opening a store with a different embedding model than it was
   written with throws `EmbeddingSpaceMismatchError` before any model download;
-  dimensions are re-checked once the embedder loads.
+  dimensions are re-checked once the embedder loads. This holds before the first
+  checkpoint too: the log header records the model. A log that names a different
+  model than the snapshot it applies to is refused (`StoreCorruptError`).
 - **No accidental wipe.** An empty index never overwrites a non-empty on-disk
   index unless items were explicitly removed in that session
   (`EmptyOverwriteRefusedError`; the on-disk data is left untouched).

@@ -31,7 +31,11 @@
  * replayed on the next open.
  *
  * The second test covers Phase 1 directly: kill-without-close in strict and
- * relaxed durability, and a reopen across threshold checkpoints.
+ * relaxed durability, a reopen across threshold checkpoints, a fresh store
+ * whose first checkpoint was torn (recovered from the log, which is still
+ * based on "no snapshot"; refused once the log was reset onto the lost
+ * checkpoint), and the model guard for a store killed before its first
+ * checkpoint (the log header names the model).
  *
  * Run with `npm run test:browser`. Skips (does not fail) if Chromium can't launch.
  */
@@ -463,10 +467,10 @@ function walScenario(): Promise<Record<string, unknown>> {
   }
 
   /** Reopen in a fresh worker; report size and which of `n` ids are found by their own text. */
-  async function reopenAndCheck(name: string, prefix: string, n: number) {
+  async function reopenAndCheck(name: string, prefix: string, n: number, open: Record<string, unknown> = {}) {
     const w = spawn();
     try {
-      const opened = await w.call({ type: 'open', name, persist: true });
+      const opened = await w.call({ type: 'open', name, persist: true, ...open });
       const size = (await w.call({ type: 'size' })).size;
       const missing: string[] = [];
       for (let i = 0; i < n; i++) {
@@ -474,7 +478,7 @@ function walScenario(): Promise<Record<string, unknown>> {
         if (hits[0]?.id !== `${prefix}-${i}`) missing.push(`${prefix}-${i}`);
       }
       await w.call({ type: 'close' });
-      return { ok: true, size, missing, persistent: opened.persistent };
+      return { ok: true, size, missing, persistent: opened.persistent, warnings: opened.warnings };
     } catch (err) {
       return { ok: false, errorName: (err as Error).name, message: (err as Error).message };
     } finally {
@@ -482,14 +486,17 @@ function walScenario(): Promise<Record<string, unknown>> {
     }
   }
 
-  async function slots(name: string): Promise<any> {
+  /** One store-less test-hook call in a throwaway worker. */
+  async function hook(msg: Record<string, unknown>): Promise<any> {
     const w = spawn();
     try {
-      return await w.call({ type: 'slots', name });
+      return await w.call(msg);
     } finally {
       w.kill();
     }
   }
+
+  const slots = (name: string): Promise<any> => hook({ type: 'slots', name });
 
   return (async () => {
     const r: Record<string, unknown> = {};
@@ -517,11 +524,44 @@ function walScenario(): Promise<Record<string, unknown>> {
     r.checkpointSlots = await slots(C);
     r.checkpoint = await reopenAndCheck(C, 'k', 25);
 
+    // ---- a fresh store's FIRST checkpoint torn: the log still has everything ----
+    const T = 'wal-torn-first-' + stamp;
+    const noThreshold = { checkpointRecords: 1_000_000 };
+    await insertThenKill(T, 't', 20, noThreshold); // log based on 0, slots empty
+    const preCheckpointLog = (await hook({ type: 'readFile', name: T, slot: 'wal' })).bytes;
+    {
+      // Force the first checkpoint (flush, not close), then kill.
+      const w = spawn();
+      await w.call({ type: 'open', name: T, persist: true, ...noThreshold });
+      await w.call({ type: 'flush' });
+      w.kill();
+    }
+    const checkpointed: any = await slots(T);
+    r.tornFirstCheckpointed = checkpointed;
+    await hook({ type: 'corrupt', name: T, slot: 'a', truncateTo: Math.floor(checkpointed.a.size / 2) });
+    // The log was already reset onto that checkpoint (base 1): its data lived
+    // only in the torn slot, so open must refuse.
+    r.tornFirstBase1 = await reopenAndCheck(T, 't', 20, noThreshold);
+    // Put back the log as it stood before the checkpoint's reset: the exact disk
+    // a kill in the middle of the first checkpoint's slot write leaves.
+    await hook({ type: 'writeFile', name: T, slot: 'wal', bytes: preCheckpointLog });
+    r.tornFirstSlots = await slots(T);
+    r.tornFirst = await reopenAndCheck(T, 't', 20, noThreshold);
+    r.tornFirstRepaired = await slots(T);
+
+    // ---- killed before the first checkpoint, reopened with another model ----
+    const M = 'wal-model-' + stamp;
+    await insertThenKill(M, 'm', 10, {}); // model fake-fnv1a-32, no checkpoint
+    r.modelSlots = await slots(M);
+    r.modelWrong = await reopenAndCheck(M, 'm', 10, { model: 'other-model' }); // same 32 dims
+    r.modelUntouched = JSON.stringify(await slots(M)) === JSON.stringify(r.modelSlots);
+    r.modelRight = await reopenAndCheck(M, 'm', 10, { model: 'fake-fnv1a-32' });
+
     return r;
   })();
 }
 
-test('durability: acknowledged writes survive a worker kill (WAL replay, checkpoints)', async (t) => {
+test('durability: acknowledged writes survive a worker kill (WAL replay, checkpoints, torn first checkpoint, model guard)', async (t) => {
   let chromium;
   try {
     ({ chromium } = await import('playwright'));
@@ -573,6 +613,40 @@ test('durability: acknowledged writes survive a worker kill (WAL replay, checkpo
     assert.equal(r.checkpoint.ok, true, `checkpoint reopen failed: ${r.checkpoint.message}`);
     assert.equal(r.checkpoint.size, 25);
     assert.deepEqual(r.checkpoint.missing, []);
+
+    // torn first checkpoint
+    assert.equal(r.tornFirstCheckpointed.a.sequence, 1, 'flush wrote the first checkpoint');
+    assert.equal(r.tornFirstCheckpointed.b.size, 0, 'the only slot');
+    assert.equal(r.tornFirstCheckpointed.wal.base, 1, 'and reset the log onto it');
+    assert.equal(r.tornFirstBase1.ok, false, 'a torn only slot under a log based on it is refused');
+    assert.equal(r.tornFirstBase1.errorName, 'StoreCorruptError', String(r.tornFirstBase1.message));
+    assert.match(String(r.tornFirstBase1.message), /slot-a\.bin: bad-length/);
+    assert.equal(r.tornFirstSlots.a.sequence, null, 'slot-a is torn');
+    assert.ok(r.tornFirstSlots.a.size > 0);
+    assert.equal(r.tornFirstSlots.b.size, 0);
+    assert.equal(r.tornFirstSlots.wal.base, 0, 'the log is based on "no snapshot"');
+    assert.equal(r.tornFirstSlots.wal.records, 20);
+    assert.equal(r.tornFirst.ok, true, `torn first checkpoint must reopen: ${r.tornFirst.message}`);
+    assert.equal(r.tornFirst.size, 20, 'every acknowledged write is replayed from the log');
+    assert.deepEqual(r.tornFirst.missing, [], 'every id ranks first for its own text');
+    const tornWarnings = r.tornFirst.warnings.filter((w: string) => /torn slot-a\.bin/.test(w));
+    assert.equal(tornWarnings.length, 1, `warns once naming the torn slot: ${JSON.stringify(r.tornFirst.warnings)}`);
+    assert.equal(r.tornFirstRepaired.a.sequence, 1, 'close checkpointed over the torn slot');
+    assert.equal(r.tornFirstRepaired.a.count, 20);
+    assert.equal(r.tornFirstRepaired.wal.base, 1);
+
+    // model guard before the first checkpoint
+    assert.equal(r.modelSlots.a.size, 0, 'no checkpoint: the data lives only in the log');
+    assert.equal(r.modelSlots.wal.records, 10);
+    assert.equal(r.modelSlots.wal.model, 'fake-fnv1a-32', 'the log header names the model');
+    assert.equal(r.modelWrong.ok, false, 'a different model of the same width is refused');
+    assert.equal(r.modelWrong.errorName, 'EmbeddingSpaceMismatchError', String(r.modelWrong.message));
+    assert.match(String(r.modelWrong.message), /fake-fnv1a-32/);
+    assert.match(String(r.modelWrong.message), /other-model/);
+    assert.equal(r.modelUntouched, true, 'a mismatched open must not write');
+    assert.equal(r.modelRight.ok, true, `right model must reopen: ${r.modelRight.message}`);
+    assert.equal(r.modelRight.size, 10);
+    assert.deepEqual(r.modelRight.missing, []);
   } finally {
     await browser.close();
     server.close();

@@ -185,7 +185,7 @@
       <div class="st full"><div class="st-k">On disk · OPFS ferrovec/live-demo/</div><div class="st-v" id="st-foot">—</div></div>
     </div>
     <p class="opline" id="opline"></p>
-    <p class="note-dl">First visit downloads the embedding model: <b>~23 MB once, cached by the browser; later opens are offline.</b> Until it is ready the controls below are disabled, not hidden.</p>
+    <p class="note-dl">First visit fetches <b>about 28 MB (23 MB model + 5 MB runtime), cached by the browser; later opens are offline.</b> Until it is ready the controls below are disabled, not hidden.</p>
     <div class="banner" id="banner"><b>The store did not open.</b><pre id="banner-msg"></pre><button class="btn danger" type="button" id="banner-destroy">Destroy and reseed</button></div>
   </header>
 
@@ -483,16 +483,17 @@ function parseSlot(file, bytes) {
   try { const meta = JSON.parse(new TextDecoder().decode(bytes.subarray(32, 32 + metaLen))); count = meta.count; model = meta.embeddingSpace?.model ?? null; } catch { /* leave unknown */ }
   return { file, size, valid: true, sequence, count, model };
 }
-/** Walk wal.bin's framed records (layout: js/src/wal.ts). */
+/** Walk wal.bin's framed records (FVW2 layout: js/src/wal.ts; the header is 26 bytes + the model id). */
 function parseWal(bytes) {
   if (bytes === null) return { size: null, records: 0, tail: 0, base: null };
   const size = bytes.length;
-  if (size < 24) return { size, records: 0, tail: size, base: null };
+  if (size < 26) return { size, records: 0, tail: size, base: null };
   const v = new DataView(bytes.buffer, bytes.byteOffset, size);
-  const magicOk = bytes[0] === 0x46 && bytes[1] === 0x56 && bytes[2] === 0x57 && bytes[3] === 0x31;
-  if (!magicOk || crc32(bytes.subarray(0, 20)) !== v.getUint32(20, true)) return { size, records: 0, tail: size - 24, base: null, badHeader: true };
+  const magicOk = bytes[0] === 0x46 && bytes[1] === 0x56 && bytes[2] === 0x57 && bytes[3] === 0x32;
+  const hdr = 26 + v.getUint16(20, true);
+  if (!magicOk || hdr > size || crc32(bytes.subarray(0, hdr - 4)) !== v.getUint32(hdr - 4, true)) return { size, records: 0, tail: Math.max(0, size - hdr), base: null, badHeader: true };
   const base = Number(v.getBigUint64(8, true));
-  let off = 24, records = 0;
+  let off = hdr, records = 0;
   while (off + 8 <= size) {
     const len = v.getUint32(off, true);
     if (len === 0 || off + 8 + len > size) break;
