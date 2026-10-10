@@ -33,6 +33,8 @@ export type {
   VectorCore,
   Persister,
   QueryResult,
+  ListOptions,
+  StoredDocument,
   Device,
   Durability,
   EmbedderOptions,

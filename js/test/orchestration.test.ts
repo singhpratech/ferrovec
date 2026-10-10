@@ -7,8 +7,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { Engine } from '../src/engine.ts';
-import { createCore } from '../src/core-loader.ts';
+import { DEFAULT_LIST_LIMIT, Engine, MAX_LIST_LIMIT } from '../src/engine.ts';
+import { createCore, createCoreFromBytes } from '../src/core-loader.ts';
+import { decodeSnapshot, encodeSnapshot } from '../src/snapshot.ts';
 import { EmbeddingSpaceMismatchError, WalCorruptError } from '../src/errors.ts';
 import type { Embedder } from '../src/types.ts';
 import type { WalRecord } from '../src/wal.ts';
@@ -280,4 +281,123 @@ test('append rejection: a new insert rolls back; an upsert and a remove stay app
   assert.equal(engine.size(), 1);
   assert.ok(!(await engine.query('doomed bravo document', 5)).some((h) => h.id === 'doomed'));
   assert.equal(await engine.remove('doomed'), false, 'reported gone');
+});
+
+/** The ids of `engine.list(...)`, for compact order assertions. */
+function listedIds(engine: Engine, options?: { offset?: number; limit?: number }): string[] {
+  return engine.list(options).map((d) => d.id);
+}
+
+test('list(): insertion order, upserts keep their position, removed ids absent, re-insert goes last', async () => {
+  const engine = await Engine.create({ embedder: makeFakeEmbedder(), core: await createCore(DIMS) });
+  assert.deepEqual(engine.list(), [], 'empty store lists nothing');
+
+  await engine.insert('alpha one', 'a');
+  await engine.insert('bravo two', 'b');
+  const auto = await engine.insert('charlie three');
+  await engine.insert('delta four', 'd');
+  assert.deepEqual(listedIds(engine), ['a', 'b', auto, 'd'], 'insertion order');
+
+  // Upsert: new text, same position.
+  await engine.insert('bravo rewritten', 'b');
+  assert.deepEqual(engine.list(), [
+    { id: 'a', text: 'alpha one' },
+    { id: 'b', text: 'bravo rewritten' },
+    { id: auto, text: 'charlie three' },
+    { id: 'd', text: 'delta four' },
+  ]);
+
+  // Removed ids never appear; a removed-then-reinserted id moves to the end.
+  assert.equal(await engine.remove('a'), true);
+  assert.equal(await engine.remove('nope'), false);
+  assert.deepEqual(listedIds(engine), ['b', auto, 'd']);
+  await engine.insert('alpha is back', 'a');
+  assert.deepEqual(listedIds(engine), ['b', auto, 'd', 'a']);
+  assert.equal(engine.list().length, engine.size(), 'list covers every live item');
+});
+
+test('list(): offset/limit paging, defaults, and clamping (never throws)', async () => {
+  const engine = await Engine.create({ embedder: makeFakeEmbedder(), core: await createCore(DIMS) });
+  const total = MAX_LIST_LIMIT + 5;
+  const ids: string[] = [];
+  for (let i = 0; i < total; i++) ids.push(await engine.insert(`doc number ${i}`, `id-${i}`));
+
+  assert.equal(DEFAULT_LIST_LIMIT, 100);
+  assert.equal(MAX_LIST_LIMIT, 1000);
+  assert.deepEqual(listedIds(engine), ids.slice(0, 100), 'default: offset 0, limit 100');
+  assert.deepEqual(listedIds(engine, { offset: 10, limit: 3 }), ['id-10', 'id-11', 'id-12']);
+  assert.deepEqual(listedIds(engine, { offset: total - 2, limit: 10 }), ids.slice(-2), 'short last page');
+  assert.deepEqual(listedIds(engine, { offset: total }), [], 'offset at the end');
+  assert.deepEqual(listedIds(engine, { offset: total + 50 }), [], 'offset past the end');
+
+  // Clamping, not throwing.
+  assert.equal(engine.list({ limit: 5000 }).length, MAX_LIST_LIMIT, 'limit clamped to 1000');
+  assert.equal(engine.list({ limit: Infinity }).length, DEFAULT_LIST_LIMIT, 'non-finite limit → default');
+  assert.equal(engine.list({ limit: Number.NaN }).length, DEFAULT_LIST_LIMIT, 'NaN limit → default');
+  assert.deepEqual(engine.list({ limit: 0 }), [], 'limit 0 → empty page');
+  assert.deepEqual(engine.list({ limit: -3 }), [], 'negative limit → 0');
+  assert.deepEqual(listedIds(engine, { offset: -7, limit: 2 }), ['id-0', 'id-1'], 'negative offset → 0');
+  assert.deepEqual(listedIds(engine, { offset: 2.9, limit: 1.9 }), ['id-2'], 'fractions are floored');
+
+  // Paging with offset += limit visits every document exactly once, in order.
+  const paged: string[] = [];
+  for (let offset = 0; ; offset += 300) {
+    const page = listedIds(engine, { offset, limit: 300 });
+    paged.push(...page);
+    if (page.length < 300) break;
+  }
+  assert.deepEqual(paged, ids);
+});
+
+test('list(): the order survives a reopen (snapshot texts + write-ahead log replay)', async () => {
+  const embedder = makeFakeEmbedder();
+  const log: WalRecord[] = [];
+  const engine = await Engine.create({
+    embedder,
+    core: await createCore(DIMS),
+    persister: { append: async (r) => void log.push(r), async flush() {}, async close() {} },
+  });
+
+  // Before the checkpoint: inserts, an upsert, and a remove.
+  await engine.insert('alpha one', 'a');
+  await engine.insert('bravo two', 'b');
+  await engine.insert('charlie three', 'c');
+  await engine.insert('bravo rewritten', 'b');
+  await engine.remove('a');
+
+  // Checkpoint: the snapshot as the store would frame and later decode it.
+  const source = engine.snapshot();
+  const bytes = encodeSnapshot(source.core, source.texts, { sequence: 1n, meta: source.meta });
+  log.length = 0; // the log resets at a checkpoint
+
+  // After the checkpoint, only in the log: an upsert of a snapshotted id, a
+  // remove + re-insert, and a fresh id.
+  await engine.insert('charlie rewritten', 'c');
+  await engine.remove('b');
+  await engine.insert('bravo returns', 'b');
+  await engine.insert('echo five', 'e');
+  await engine.insert('alpha again', 'a');
+  const before = engine.list();
+  assert.deepEqual(
+    before.map((d) => d.id),
+    ['c', 'b', 'e', 'a'],
+  );
+
+  // Reopen: rehydrate the checkpoint, replay the log on top.
+  const snap = decodeSnapshot(bytes);
+  const reopened = await Engine.create({
+    embedder,
+    core: await createCoreFromBytes(snap.core),
+    initialTexts: snap.texts,
+    initialMeta: snap.meta,
+    replay: [...log],
+  });
+  assert.deepEqual(reopened.list(), before, 'same ids, same texts, same order after reopen');
+  assert.deepEqual(reopened.list(), [
+    { id: 'c', text: 'charlie rewritten' },
+    { id: 'b', text: 'bravo returns' },
+    { id: 'e', text: 'echo five' },
+    { id: 'a', text: 'alpha again' },
+  ]);
+  assert.equal(reopened.size(), 4);
 });

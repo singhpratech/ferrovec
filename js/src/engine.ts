@@ -21,7 +21,15 @@
 
 import { EmbeddingSpaceMismatchError, WalCorruptError } from './errors.ts';
 import { SNAPSHOT_WRITER, type EmbeddingSpace, type SnapshotSource } from './snapshot.ts';
-import type { Embedder, EngineCreateOptions, Persister, QueryResult, VectorCore } from './types.ts';
+import type {
+  Embedder,
+  EngineCreateOptions,
+  ListOptions,
+  Persister,
+  QueryResult,
+  StoredDocument,
+  VectorCore,
+} from './types.ts';
 
 /** A {@link Persister} that does nothing — the default (pure in-memory) sink. */
 const NO_PERSIST: Persister = {
@@ -29,6 +37,17 @@ const NO_PERSIST: Persister = {
   async flush() {},
   async close() {},
 };
+
+/** Default page size of {@link Engine.list}. */
+export const DEFAULT_LIST_LIMIT = 100;
+/** Largest page {@link Engine.list} returns; bigger limits are clamped to it. */
+export const MAX_LIST_LIMIT = 1000;
+
+/** Coerce a caller-supplied count to a non-negative integer, or `fallback` if it is not a finite number. */
+function clampCount(value: number | undefined, fallback: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(0, Math.floor(value)));
+}
 
 export class Engine {
   readonly #embedder: Embedder;
@@ -192,6 +211,41 @@ export class Engine {
   /** Number of live items in the index. */
   size(): number {
     return this.#core.len();
+  }
+
+  /**
+   * Enumerate stored documents as `{ id, text }`, one page at a time.
+   *
+   * Order is **insertion order**: a document is placed when its id is first
+   * inserted, an upsert of an existing id keeps that original position (only
+   * its text changes), and an id that is removed and later re-inserted goes to
+   * the end. The order survives a reopen unchanged: the snapshot stores the
+   * id→text map in this order and the write-ahead log replays inserts and
+   * removes on top of it exactly as they happened. Removed documents never
+   * appear.
+   *
+   * `offset` defaults to `0` and `limit` to {@link DEFAULT_LIST_LIMIT} (100);
+   * both are clamped rather than rejected — negative values become `0`, a
+   * `limit` above {@link MAX_LIST_LIMIT} (1,000) becomes 1,000, fractions are
+   * floored, and a non-numeric value falls back to the default. Paging is by
+   * position, so a concurrent insert/remove can shift later pages.
+   *
+   * Only documents whose text is known are listed: a store rehydrated from a
+   * pre-0.4 bare-core snapshot (no text sidecar) can report a larger
+   * {@link size} than `list` enumerates.
+   */
+  list(options: ListOptions = {}): StoredDocument[] {
+    const offset = clampCount(options.offset, 0, Number.MAX_SAFE_INTEGER);
+    const limit = clampCount(options.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
+    const out: StoredDocument[] = [];
+    if (limit === 0) return out;
+    let index = 0;
+    for (const [id, text] of this.#texts) {
+      if (index++ < offset) continue;
+      out.push({ id, text });
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   /**

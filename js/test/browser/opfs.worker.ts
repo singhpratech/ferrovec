@@ -78,6 +78,9 @@ interface Req {
   text?: string;
   docId?: string;
   k?: number;
+  /** `list`: page offset and size (engine defaults when omitted). */
+  offset?: number;
+  limit?: number;
   /** Model id reported by the fake embedder (and expected of the store). */
   model?: string;
   /** Durability mode for `open`. Defaults to the store's default (`'strict'`). */
@@ -313,6 +316,8 @@ async function handle(req: Req): Promise<unknown> {
       return { results: await requireStore().query(req.text ?? '', req.k ?? 5) };
     case 'size':
       return { size: await requireStore().size() };
+    case 'list':
+      return { documents: await requireStore().list({ offset: req.offset, limit: req.limit }) };
     case 'flush':
       await requireStore().flush();
       return { flushed: true };

@@ -171,3 +171,47 @@ test('a follower still joining rejects open() promptly with the typed error when
   await new Promise((r) => setImmediate(r));
   assert.equal(locks.held.has(`ferrovec-leader:${NAME}`), false, 'the follower released the lock');
 });
+
+test('list(): a follower proxies to the leader and gets the leader\'s documents, in order', async (t) => {
+  const locks = new FakeLocks();
+  Object.defineProperty(navigator, 'locks', { value: locks, configurable: true });
+  const RealChannel = globalThis.BroadcastChannel;
+  globalThis.BroadcastChannel = SpyChannel;
+  t.after(() => {
+    delete (navigator as { locks?: unknown }).locks;
+    globalThis.BroadcastChannel = RealChannel;
+    for (const c of channels) if (!c.closed) c.close();
+  });
+
+  const NAME = 'list-proxy';
+  const leader = await Coordinator.open({
+    name: NAME,
+    requestTimeoutMs: 200,
+    makeEngine: () => Engine.create({ embedder }),
+  });
+  const follower = await Coordinator.open({
+    name: NAME,
+    requestTimeoutMs: 200,
+    makeEngine: () => Engine.create({ embedder }),
+  });
+  assert.equal(leader.role, 'leader');
+  assert.equal(follower.role, 'follower');
+
+  await leader.insert('first', 'one');
+  await follower.insert('second', 'two'); // proxied write
+  await leader.insert('third', 'three');
+  await follower.insert('second, rewritten', 'two'); // proxied upsert keeps position
+  assert.equal(await follower.remove('one'), true); // proxied remove
+
+  const expected = [
+    { id: 'two', text: 'second, rewritten' },
+    { id: 'three', text: 'third' },
+  ];
+  assert.deepEqual(await leader.list(), expected, 'leader lists its own engine');
+  assert.deepEqual(await follower.list(), expected, 'follower gets the leader\'s answer');
+  assert.deepEqual(await follower.list({ offset: 1, limit: 1 }), [expected[1]], 'paging is forwarded');
+  assert.deepEqual(await follower.list({ limit: 1e9 }), expected, 'an oversized limit is clamped, not rejected');
+
+  await follower.close();
+  await leader.close();
+});

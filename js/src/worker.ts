@@ -84,6 +84,8 @@ async function handle(request: WorkerRequest): Promise<unknown> {
       return { removed: await requireStore().remove(request.docId) };
     case 'size':
       return { size: await requireStore().size() };
+    case 'list':
+      return { documents: await requireStore().list({ offset: request.offset, limit: request.limit }) };
     case 'flush':
       await requireStore().flush();
       return { flushed: true };

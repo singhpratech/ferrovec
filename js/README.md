@@ -66,12 +66,17 @@ const id = await db.insert('some text', { id: 'doc-1' }); // explicit id (upsert
 const hits = await db.query('query text', 10);            // k nearest, nearest-first
 await db.remove('doc-1');                                 // → boolean
 await db.size();                                          // → number of live items
+const docs = await db.list({ offset: 0, limit: 100 });    // → [{ id, text }, ...] in insertion order
 await db.flush();                                         // force log flush + checkpoint
 await db.close();                                         // final checkpoint + terminate worker
 ```
 
 Each hit is `{ id: string; text?: string; score: number }`, where `score` is
 cosine similarity (higher = closer, ≈1 for near-duplicates).
+
+`db.list()` pages through the stored documents in insertion order (an upsert
+keeps its original position, removed documents never appear, and the order is
+the same after a reopen); `limit` defaults to 100 and is clamped to 1,000.
 
 ## Persistence (OPFS)
 

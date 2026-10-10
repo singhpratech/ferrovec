@@ -288,7 +288,8 @@ const restored = FerrovecCore.fromBytes(bytes);
 > The `js/` package wraps this with automatic embedding via transformers.js
 > (**M3**), crash-safe OPFS persistence (**M4**, **M7**), and cross-tab leader election (**M6**), so the browser API becomes:
 > `const db = await Ferrovec.open('notes'); await db.insert(text); const hits = await db.query('…', 5);`
-> — live on npm as `0.4.0`.
+> — live on npm as `0.4.0`. `await db.list({ offset, limit })` pages through the stored `{ id, text }`
+> documents in insertion order.
 
 To smoke-test WASM compatibility without packaging:
 

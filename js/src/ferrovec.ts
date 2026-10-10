@@ -10,6 +10,7 @@ import type { Role } from './coordinator.ts';
 import type {
   FlushResult,
   InsertResult,
+  ListResult,
   OpenResult,
   RemoveResult,
   SizeResult,
@@ -17,7 +18,7 @@ import type {
   WorkerRequest,
   WorkerRequestBody,
 } from './protocol.ts';
-import type { Device, Durability, QueryResult } from './types.ts';
+import type { Device, Durability, ListOptions, QueryResult, StoredDocument } from './types.ts';
 
 /** Options for {@link Ferrovec.open}. */
 export interface FerrovecOptions {
@@ -241,6 +242,28 @@ export class Ferrovec {
   async size(): Promise<number> {
     const result = await this.#send<SizeResult>({ type: 'size' });
     return result.size;
+  }
+
+  /**
+   * Enumerate stored documents as `{ id, text }`, a page at a time.
+   *
+   * Order is insertion order: a document keeps the position of its id's first
+   * insert (an upsert changes its text, not its position), and an id removed
+   * and re-inserted moves to the end. The order is the same after the store is
+   * closed and reopened. Removed documents never appear.
+   *
+   * `offset` defaults to `0`, `limit` to `100`; a `limit` above `1000` is
+   * clamped to `1000` and negative values to `0` (nothing throws). Page with
+   * `offset += limit` until a page comes back shorter than `limit`. On a
+   * follower tab the call is answered by the leader, like {@link query}.
+   */
+  async list(options: ListOptions = {}): Promise<StoredDocument[]> {
+    const result = await this.#send<ListResult>({
+      type: 'list',
+      offset: options.offset,
+      limit: options.limit,
+    });
+    return result.documents;
   }
 
   /**

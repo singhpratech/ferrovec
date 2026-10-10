@@ -80,6 +80,26 @@ export interface QueryResult {
   score: number;
 }
 
+/** Options for {@link Engine.list} / `Ferrovec.list`. */
+export interface ListOptions {
+  /** Number of documents to skip from the start of the order. Defaults to `0`. */
+  offset?: number;
+  /**
+   * Maximum number of documents to return. Defaults to `100`; values above
+   * `1000` are clamped to `1000` (and negative values to `0`) rather than
+   * rejected.
+   */
+  limit?: number;
+}
+
+/** One stored document, as returned by {@link Engine.list} / `Ferrovec.list`. */
+export interface StoredDocument {
+  /** The id the document was stored under. */
+  id: string;
+  /** The original text it was inserted with (its latest text, after an upsert). */
+  text: string;
+}
+
 /**
  * When an `insert`/`remove` is acknowledged relative to its write-ahead-log
  * record reaching OPFS.

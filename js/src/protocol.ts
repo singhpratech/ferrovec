@@ -5,7 +5,7 @@
  */
 
 import type { Role } from './coordinator.ts';
-import type { Device, Durability, QueryResult } from './types.ts';
+import type { Device, Durability, QueryResult, StoredDocument } from './types.ts';
 
 export type RequestId = number;
 
@@ -45,6 +45,16 @@ export interface SizeRequest {
   type: 'size';
 }
 /**
+ * Page through stored documents in insertion order. Omitted fields take the
+ * engine defaults (offset 0, limit 100); out-of-range values are clamped.
+ */
+export interface ListRequest {
+  id: RequestId;
+  type: 'list';
+  offset?: number;
+  limit?: number;
+}
+/**
  * Force unflushed write-ahead log records to disk and write a checkpoint (sent
  * by `Ferrovec.flush`; on a follower, routed to the leader).
  */
@@ -76,6 +86,7 @@ export type WorkerRequest =
   | QueryRequest
   | RemoveRequest
   | SizeRequest
+  | ListRequest
   | FlushRequest
   | RoleRequest
   | CloseRequest
@@ -107,6 +118,9 @@ export interface RemoveResult {
 }
 export interface SizeResult {
   size: number;
+}
+export interface ListResult {
+  documents: StoredDocument[];
 }
 export interface FlushResult {
   flushed: true;

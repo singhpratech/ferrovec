@@ -20,7 +20,7 @@
  *   {@link Engine} + persistence. Exactly one writer exists at a time, so the
  *   old lock-contention crash can never happen.
  * - **Followers** (did not win the lock) hold no core. They forward
- *   `insert`/`query`/`remove`/`size`/`flush` to the leader over a
+ *   `insert`/`query`/`remove`/`size`/`list`/`flush` to the leader over a
  *   {@link BroadcastChannel} (`ferrovec-coord:<name>`) as correlation-id
  *   request/response messages and return the leader's answers.
  * - **Failover.** When the leader tab closes or crashes, its Web Lock releases;
@@ -99,7 +99,7 @@ import { EmbeddingSpaceMismatchError } from './errors.ts';
 import type { EmbeddingSpace, SnapshotMeta } from './snapshot.ts';
 import { createCoreFromBytes } from './core-loader.ts';
 import type { Engine } from './engine.ts';
-import type { Durability, QueryResult, VectorCore } from './types.ts';
+import type { Durability, ListOptions, QueryResult, StoredDocument, VectorCore } from './types.ts';
 import type { WalRecord } from './wal.ts';
 
 /** The coordination role this session resolved to. */
@@ -178,11 +178,13 @@ export interface CoordinatorOptions {
   opTimeoutMs?: number;
 }
 
-type Op = 'insert' | 'query' | 'remove' | 'size' | 'flush';
+type Op = 'insert' | 'query' | 'remove' | 'size' | 'list' | 'flush';
 interface OpArgs {
   text?: string;
   docId?: string;
   k?: number;
+  offset?: number;
+  limit?: number;
 }
 
 interface ReqMessage {
@@ -386,6 +388,11 @@ export class Coordinator {
 
   async size(): Promise<number> {
     return this.#route('size', {}) as Promise<number>;
+  }
+
+  /** Page through the stored documents in insertion order (see {@link Engine.list}). */
+  async list(options: ListOptions = {}): Promise<StoredDocument[]> {
+    return this.#route('list', { offset: options.offset, limit: options.limit }) as Promise<StoredDocument[]>;
   }
 
   async flush(): Promise<void> {
@@ -760,6 +767,8 @@ export class Coordinator {
         return engine.remove(args.docId ?? '');
       case 'size':
         return engine.size();
+      case 'list':
+        return engine.list({ offset: args.offset, limit: args.limit });
       case 'flush':
         await engine.flush();
         return true;
