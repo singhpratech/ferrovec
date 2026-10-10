@@ -27,6 +27,20 @@ thread, across reloads, across tabs. Nothing leaves the device.
 > WASM core running semantic search over sentence embeddings entirely in your browser tab.
 > No server, no network: the wasm binary and the vectors are baked into a single HTML file.
 
+## Who it's for
+
+ferrovec is for apps where the vectors in the browser are the **only copy**, and losing them would be a bug the user notices — not a cache you can rebuild.
+
+- **Local-first notes, journals, and PKM tools.** The user types a note, sees it saved, and closes the lid. The acknowledged insert survives a tab kill; the next open replays the log. No sync server, no re-embedding on launch.
+- **Offline field apps.** Inspection, clinical, survey, or agricultural tools that run for hours without a network and get force-closed by the OS. Semantic search over what was captured has to survive that.
+- **Privacy-bound RAG.** Chat-with-your-documents for legal, HR, health, or internal docs where nothing may leave the device. Embedding a large corpus takes minutes; a checksummed, crash-tested index turns that one-time ingest into a durable asset.
+- **Browser extensions with memory.** Tab-history search, reading-list recall, "what did I see about X last week". Extensions are killed and restarted constantly; the write-ahead log is what makes *remembered* true.
+- **Multi-tab dashboards.** Support consoles, CRMs, admin tools where one user has five tabs open and each inserts and searches. One elected leader, one consistent store, no diverging indexes.
+- **Kiosks, edge, and PWA devices with no backend.** They reboot unexpectedly and nobody is there to re-ingest. Open picks the newest valid snapshot, refuses a corrupt one with a typed error, and the app decides what to do.
+- **Agent memory in the tab.** Assistants that accumulate episodic memory over weeks. The embedding-space guard refuses to open a store under a different model instead of silently returning wrong neighbours.
+
+**Not a fit:** anything that needs power-loss durability (OPFS `flush()` is not `fsync`), shared state across users or devices, or an index larger than one tab's memory. See [Durability guarantees](#durability-guarantees) for the exact promises.
+
 ## Install
 
 ```sh
