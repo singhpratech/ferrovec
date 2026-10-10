@@ -43,6 +43,8 @@ ferrovec is for apps where the vectors in the browser are the **only copy**, and
 
 **Not a fit:** anything that needs power-loss durability (OPFS `flush()` is not `fsync`), shared state across users or devices, or an index larger than one tab's memory. See [Durability guarantees](#durability-guarantees) for the exact promises.
 
+**First open downloads the embedding model** (`Xenova/all-MiniLM-L6-v2`, about 23 MB quantized) from the Hugging Face Hub and caches it in the browser; every open after that is fully offline. Your text and vectors never leave the device at any point.
+
 ## How ferrovec is different
 
 In-browser vector search is a **crowded space** in 2026 — and this section is here to be honest about it. Plenty of libraries now put an HNSW index in the browser, several of them Rust→WASM like this one (altor-vec, EdgeVec, VecLite, ruvector). What almost none of them do is **remember**: they're in-memory engines — load vectors, query, and on the next reload you start over. Persistence and multi-tab consistency are left to you.
