@@ -57,6 +57,9 @@
   h1 { font-size: clamp(2rem, 5.5vw, 3rem); line-height: 1.05; margin: 0 0 0.8rem; letter-spacing: -0.01em; text-wrap: balance; }
   .lede { font-size: 1.12rem; color: var(--ink-soft); margin: 0; max-width: 40rem; }
   .lede b { color: var(--ink); }
+  .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; margin-top: 1.3rem; }
+  .btn.big { font-size: 0.95rem; padding: 0.8rem 1.3rem; }
+  .cta-note { font-family: var(--mono); font-size: 0.75rem; color: var(--ink-faint); flex-basis: 100%; }
 
   /* status strip */
   .strip { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; align-items: center; font-family: var(--mono); font-size: 0.78rem; color: var(--ink-soft); padding-block: 0.9rem; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -154,6 +157,11 @@
     <p class="eyebrow">Real ferrovec · in this tab · no server</p>
     <h1>A notebook that remembers.</h1>
     <p class="lede">Write a few notes. Then <b>pull the plug</b> while it is still writing, or open it in a second tab. The notes are in the real ferrovec store: a Rust→WASM index written to this browser's private file system behind a checksummed write-ahead log. <b>What this page acknowledges, it keeps.</b></p>
+    <div class="cta">
+      <button class="btn primary big" type="button" id="plug-hero">Pull the plug now</button>
+      <button class="btn ghost big" type="button" id="tab2-hero">Open a second tab</button>
+      <span class="cta-note" id="cta-note">saves 25 notes and reloads mid-save, then shows what survived</span>
+    </div>
   </header>
 
   <div class="strip" id="strip">
@@ -164,7 +172,7 @@
     <span id="embed-txt"></span>
   </div>
 
-  <div id="receipt" hidden></div>
+  <div id="receipt" role="status" aria-live="polite" hidden></div>
 
   <section>
     <h2 class="sec">Your notes</h2>
@@ -197,13 +205,13 @@
         <button class="btn ghost" type="button" id="tab2">Open second tab</button>
       </div>
     </div>
-    <p class="toast" id="toast"></p>
+    <p class="toast" id="toast" role="status" aria-live="polite"></p>
     <p class="more"><a href="#" id="reset">Start over</a> deletes the store and the notes above.</p>
   </section>
 
   <section>
     <h2 class="sec">Find a note</h2>
-    <p class="sub" id="find-sub">Nearest-neighbour search over the index, in this tab.</p>
+    <p class="sub" id="find-sub">Nearest-neighbour search over the index, in this tab. With the instant embedder, search by words from the note; for meaning-based search see the <a href="./demo.html">search demo</a>, which runs MiniLM vectors.</p>
     <form class="find" id="findform">
       <input id="q" type="text" placeholder="a few words from a note…" autocomplete="off" />
       <button class="btn ghost" type="submit" id="find">Find</button>
@@ -379,8 +387,13 @@ const noteTime = (id) => { const m = /^n-([0-9a-z]+)-/.exec(id); return m ? pars
 async function listAll() {
   const n = await db.size();
   if (n === 0) return [];
-  // No list API: ask the index for its n nearest neighbours of a fixed probe, which is every document.
-  const hits = await db.query('note', n);
+  let hits;
+  if (typeof db.list === 'function') {
+    hits = [];
+    for (let offset = 0; offset < n; offset += 1000) hits.push(...(await db.list({ offset, limit: 1000 })));
+  } else {
+    hits = await db.query('note', n); // older bundle: the n nearest neighbours of any probe is every document
+  }
   return hits.map((h) => ({ id: h.id, text: h.text ?? '' })).sort((x, y) => noteTime(y.id) - noteTime(x.id) || (x.id < y.id ? 1 : -1));
 }
 async function verify(list) {
@@ -418,10 +431,10 @@ async function renderNotes() {
   renderFiles(dirInfo);
 }
 function toast(text, cls = '') { const t = $('toast'); t.textContent = text; t.className = `toast ${cls}`; }
-function receipt(kind, html) { const r = $('receipt'); r.className = `receipt ${kind}`; r.innerHTML = html; r.hidden = false; }
+function receipt(kind, html) { const r = $('receipt'); r.className = `receipt ${kind}`; r.innerHTML = html; r.hidden = false; $('cta-note').textContent = 'run it again: every run picks a new random moment to reload'; r.scrollIntoView({ block: 'nearest' }); }
 function setBusy(b) {
   busy = b;
-  for (const id of ['save', 'plug', 'crash', 'tab2', 'find', 'note', 'q']) $(id).disabled = b || !db;
+  for (const id of ['save', 'plug', 'plug-hero', 'crash', 'tab2', 'tab2-hero', 'find', 'note', 'q']) $(id).disabled = b || !db;
 }
 function tickRole() {
   const role = db ? db.role : null;
@@ -485,7 +498,7 @@ $('composer').addEventListener('submit', async (e) => {
 });
 
 /* ---- pull the plug ---- */
-$('plug').addEventListener('click', async () => {
+async function pullPlug() {
   if (busy || !db) return;
   setBusy(true);
   const run = rand(3);
@@ -506,7 +519,9 @@ $('plug').addEventListener('click', async () => {
     acked.push({ id, text });
     ss.set('pending', { kind: 'plug', run, killAfter, acked }); // recorded the moment it is acknowledged
   }
-});
+}
+$('plug').addEventListener('click', pullPlug);
+$('plug-hero').addEventListener('click', pullPlug);
 
 /* ---- crash during a checkpoint ---- */
 $('crash').addEventListener('click', async () => {
@@ -529,10 +544,12 @@ $('crash').addEventListener('click', async () => {
 });
 
 /* ---- second tab, start over ---- */
-$('tab2').addEventListener('click', () => {
+function openSecondTab() {
   window.open(location.href.split('#')[0] + (MINILM ? '#minilm' : ''), '_blank');
   toast('Opened a second tab. It will join as a follower and proxy its saves through this one.');
-});
+}
+$('tab2').addEventListener('click', openSecondTab);
+$('tab2-hero').addEventListener('click', openSecondTab);
 $('reset').addEventListener('click', async (e) => {
   e.preventDefault();
   if (busy) return;
@@ -568,7 +585,7 @@ $('findform').addEventListener('submit', async (e) => {
       const id = document.createElement('span'); id.className = 'id'; id.textContent = h.id; body.append(id);
       li.append(sc, body); return li;
     }));
-    $('find-sub').textContent = `Top ${hits.length} of ${nf(await db.size())} in ${ms(t)}, embed + HNSW walk, in this tab.`;
+    $('find-sub').textContent = `Top ${hits.length} of ${nf(await db.size())} in ${ms(t)}: embed, then an HNSW walk, in this tab.`;
   } finally { setBusy(false); }
 });
 
