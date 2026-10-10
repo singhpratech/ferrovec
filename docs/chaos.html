@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ferrovec — crash test</title>
+<meta name="description" content="ferrovec kill-the-tab chaos results: 1,000 tab kills per browser, zero acknowledged writes lost." />
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
+<style>
+  :root {
+    --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #8B8478;
+    --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
+    --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4;
+    --wasm: #5B48D8; --wasm-soft: #E3DFF7;
+    --good: #2E6B3C; --good-soft: #DBE9DD;
+    --warn: #8A6410; --code-bg: #EBE7DE; --canvas-node: #C13A15; --canvas-edge: rgba(91,72,216,0.22);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+      --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+      --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15;
+      --wasm: #927FF0; --wasm-soft: #241E3E;
+      --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F;
+      --code-bg: #1E1A15; --canvas-node: #EC6236; --canvas-edge: rgba(146,127,240,0.22);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #8B8478;
+    --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
+    --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4; --wasm: #5B48D8; --wasm-soft: #E3DFF7;
+    --good: #2E6B3C; --good-soft: #DBE9DD; --warn: #8A6410; --code-bg: #EBE7DE;
+    --canvas-node: #C13A15; --canvas-edge: rgba(91,72,216,0.22);
+  }
+  :root[data-theme="dark"] {
+    --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+    --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
+    --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
+    --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --code-bg: #1E1A15;
+    --canvas-node: #EC6236; --canvas-edge: rgba(146,127,240,0.22);
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); scroll-behavior: smooth; scroll-padding-top: 4.6rem; -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation: none !important; transition: none !important; } }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+    font-size: 1.05rem; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .mono, code, pre, .tag, .eyebrow, .badge { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+  code { background: var(--code-bg); padding: 0.12em 0.38em; border-radius: 3px; font-size: 0.86em; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  h1, h2, h3 { text-wrap: balance; }
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 0 1.5rem; }
+  .narrow { max-width: 46rem; }
+  .eyebrow { font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); margin: 0 0 0.6rem; }
+  .eyebrow.w { color: var(--wasm); }
+
+  .brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; letter-spacing: -0.02em; font-size: 1.15rem; }
+  .brand .mark { color: var(--accent); font-size: 1.3rem; line-height: 1; }
+  .brand .brand-logo { width: 1.2em; height: 1.2em; border-radius: 4px; object-fit: cover; box-shadow: 0 0 0 1px var(--line); flex: 0 0 auto; display: inline-block; }
+  .btn .brand-logo { width: 1.05em; height: 1.05em; border-radius: 3px; object-fit: cover; vertical-align: -0.15em; display: inline-block; }
+  /* Sticky page-level tab bar */
+  .topbar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--paper) 86%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .topbar .inner { display: flex; align-items: center; gap: 1rem; min-height: 3.4rem; }
+  .topbar .tb-brand { font-weight: 700; letter-spacing: -0.01em; color: var(--ink); display: inline-flex; align-items: center; gap: 0.5rem; flex: 0 0 auto; text-decoration: none; }
+  .topbar .tb-logo { width: 26px; height: 26px; border-radius: 7px; object-fit: cover; display: block; box-shadow: 0 0 0 1px var(--line), 0 2px 8px rgba(0,0,0,0.25); }
+  .topbar nav { display: flex; gap: 1.15rem; margin-left: auto; align-items: center; font-size: 0.82rem; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav a { color: var(--ink-soft); text-decoration: none; letter-spacing: 0.02em; flex: 0 0 auto; padding: 0.2rem 0; }
+  .topbar nav a:hover { color: var(--accent); }
+  .topbar nav a.tab-demo { color: var(--accent); font-weight: 600; }
+  .topbar nav a.current { color: var(--accent); font-weight: 600; }
+  section.band { padding: 4.5rem 0; border-bottom: 1px solid var(--line); }
+  section.band.alt { background: var(--panel); }
+  h2 { font-size: clamp(1.7rem, 3.6vw, 2.4rem); letter-spacing: -0.015em; line-height: 1.12; margin: 0 0 1rem; }
+  .section-lede { font-size: 1.12rem; color: var(--ink-soft); max-width: 44rem; margin: 0 0 2rem; }
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; min-width: 40rem; }
+  th, td { text-align: left; padding: 0.7rem 0.95rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-family: ui-monospace, Menlo, monospace; font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); background: var(--panel-2); }
+  tr:last-child td { border-bottom: none; }
+  td.name { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+  .row-us { background: var(--accent-soft); }
+  .row-us td.name { color: var(--accent); }
+  .yes { color: var(--good); font-weight: 700; } .no { color: var(--ink-faint); } .partial { color: var(--warn); }
+
+  td.num { font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; text-align: right; }
+  th.num { text-align: right; }
+  td.date { white-space: nowrap; }
+  .note { font-size: 0.92rem; color: var(--ink-soft); max-width: 44rem; margin: 1.2rem 0 0; }
+  footer { padding: 3rem 0 4rem; }
+  .foot-inner { display: flex; justify-content: space-between; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
+  footer .brand { margin-bottom: 0.6rem; }
+  footer p { font-size: 0.9rem; color: var(--ink-soft); max-width: 30rem; margin: 0.3rem 0; }
+  .foot-links { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.9rem; }
+  .foot-links a { color: var(--ink-soft); text-decoration: none; }
+  .foot-links a:hover { color: var(--accent); }
+  .disclaimer { margin-top: 2rem; font-size: 0.78rem; color: var(--ink-faint); border-top: 1px solid var(--line); padding-top: 1.2rem; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="inner wrap">
+    <a class="tb-brand" href="./index.html"><img class="tb-logo" src="./assets/logo-256.png" alt="ferrovec logo" width="26" height="26" /> ferrovec</a>
+    <nav aria-label="Sections">
+      <a href="./index.html#vision">Vision</a>
+      <a href="./index.html#story">Story</a>
+      <a href="./index.html#what">Features</a>
+      <a href="./index.html#how">Architecture</a>
+      <a href="./index.html#compare">Compare</a>
+      <a href="./index.html#roadmap">Roadmap</a>
+      <a href="./index.html#install">Install</a>
+      <a class="current" href="./chaos.html" aria-current="page">Crash test</a>
+      <a class="tab-demo" href="./demo.html">▶ Live demo</a>
+      <a href="https://github.com/singhpratech/ferrovec">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="band" id="top">
+  <div class="wrap">
+    <p class="eyebrow">Crash test</p>
+    <h2>1,000 tab kills per browser. Zero acknowledged writes lost.</h2>
+    <p class="section-lede">A write is <em>acknowledged</em> when its <code>insert()</code> promise has resolved; ferrovec only resolves it after the write has been appended to an on-disk write-ahead log in OPFS and flushed. The chaos harness repeatedly inserts a random batch of documents into a real ferrovec store in a headless browser and kills the page at a random moment, often while the next insert is still in flight, with no <code>close()</code> or <code>flush()</code>. It then reopens the store in a fresh page and checks that every acknowledged document is still there and still answers its own query.</p>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Browser</th>
+            <th class="num">Cycles</th>
+            <th class="num">Acked writes</th>
+            <th class="num">Lost</th>
+            <th class="num">Torn tails recovered</th>
+            <th class="num">Reopen p50 / p95 (ms)</th>
+            <th>Date</th>
+            <th>Commit</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name">Chromium 149</td>
+            <td class="num">1,000</td>
+            <td class="num">5,887</td>
+            <td class="num yes">0</td>
+            <td class="num">1</td>
+            <td class="num">64.3 / 82.6</td>
+            <td class="date">2026-10-10</td>
+            <td>19a2955 + Phase 1 (uncommitted)</td>
+          </tr>
+          <tr>
+            <td class="name">Firefox 151</td>
+            <td class="num">1,000</td>
+            <td class="num">6,012</td>
+            <td class="num yes">0</td>
+            <td class="num">0</td>
+            <td class="num">174 / 325</td>
+            <td class="date">2026-10-10</td>
+            <td>19a2955 + Phase 1 (uncommitted)</td>
+          </tr>
+          <tr>
+            <td class="name">WebKit 26.5</td>
+            <td class="num no">—</td>
+            <td class="num no">—</td>
+            <td class="num no">—</td>
+            <td class="num no">—</td>
+            <td class="num no">—</td>
+            <td class="no">not run</td>
+            <td class="no">could not launch on the test host</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note">Strict durability mode, which is the default. The store grows to about 6,000 documents over a run, with a checkpoint every 50 logged records. A torn tail is a partially written last log record; it is cut off on reopen and never applied. These results cover tab and worker kills, not power loss: OPFS <code>flush()</code> is not an <code>fsync</code>. Rivals (EdgeVec, VecLite, @ruvector/wasm): pending.</p>
+    <p class="note">Re-run it yourself: <code>cd js &amp;&amp; CYCLES=1000 BROWSER=firefox npm run test:chaos</code>. The method and caveats are in <a href="https://github.com/singhpratech/ferrovec/blob/main/js/test/chaos/RESULTS.md">RESULTS.md</a>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-inner">
+      <div>
+        <div class="brand"><img class="brand-logo" src="./assets/logo-256.png" alt="" /> ferrovec</div>
+        <p>A persisted vector store for the browser, with a Rust engine inside. Local-first, private by default, no server required.</p>
+        <p style="color:var(--ink-faint);">MIT licensed · built in the open by <a href="https://github.com/singhpratech">singhpratech</a>.</p>
+      </div>
+      <div class="foot-links">
+        <a href="./demo.html">Live demo</a>
+        <a href="https://crates.io/crates/ferrovec">crates.io</a>
+        <a href="https://www.npmjs.com/package/ferrovec">npm</a>
+        <a href="https://docs.rs/ferrovec">docs.rs</a>
+        <a href="https://github.com/singhpratech/ferrovec">GitHub</a>
+        <a href="./index.html#roadmap">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

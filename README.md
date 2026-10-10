@@ -35,7 +35,7 @@ In-browser vector search is a **crowded space** in 2026 — and this section is 
 
 ferrovec's wedge is exactly that missing half — **durability and consistency**:
 
-| | Engine | Index | Incremental | Persists in-browser | Cross-tab safe | Checksummed, crash-safe file |
+| | Engine | Index | Incremental | Persists in-browser | Cross-tab safe | Checksummed, crash-tested file |
 | --- | --- | --- | --- | --- | --- | --- |
 | **ferrovec** | Rust/WASM | **HNSW** | ✅ | ✅ **OPFS, built-in** | ✅ **leader election** | ✅ |
 | altor-vec | Rust/WASM | HNSW | ✅ | ❌ | ❌ | ❌ |
@@ -50,7 +50,7 @@ ferrovec's wedge is exactly that missing half — **durability and consistency**
 
 Persisting is easy; persisting *safely* is the part that usually goes missing. This is what ferrovec's on-disk store (npm package, OPFS) does and does not promise.
 
-**Self-describing, checksummed snapshots.** Every persisted snapshot is a single FVS2 file:
+**Self-describing, checksummed snapshots.** Every checkpoint is a single FVS2 file, written alongside a write-ahead log (`wal.bin`, below):
 
 | Field | Size | Purpose |
 | --- | --- | --- |
@@ -64,6 +64,20 @@ Persisting is easy; persisting *safely* is the part that usually goes missing. T
 A truncated, bit-flipped, or trailing-garbage file is detected on open and never decoded into a wrong index. The exact byte layout is documented at the top of [`js/src/snapshot.ts`](./js/src/snapshot.ts).
 
 **Two slots, so a crash can only hurt the write in flight.** Commits alternate between `slot-a.bin` and `slot-b.bin` inside the store's OPFS directory, always writing to the slot that does *not* hold the current commit. A crash mid-write can only damage the slot being written; the previous commit survives and is recovered on the next open. If every non-empty slot is unreadable, `open` throws `StoreCorruptError` instead of silently starting empty.
+
+**Write-ahead log.** Next to the two slot files sits `wal.bin`. Every `insert` and `remove` is appended to it as one framed record with its own CRC-32 (layout at the top of [`js/src/wal.ts`](./js/src/wal.ts)). In the default `durability: 'strict'` mode the record is flushed to OPFS *before* the `insert` or `remove` promise resolves, so the acknowledgement is the durability point: once you have seen it, the write survives a tab kill. `durability: 'relaxed'` acknowledges immediately and flushes on a 50 ms timer; it can lose the last ~50 ms on a tab kill and exists for bulk ingest.
+
+```ts
+const db = await Ferrovec.open('notes', { durability: 'relaxed' }); // bulk ingest
+// ... many inserts ...
+await db.flush(); // force a log flush plus a checkpoint
+```
+
+- **Checkpoints.** Every 2,000 records or 4 MiB of log, and on `flush()` and `close()`, the full FVS2 snapshot is written to the non-current slot. Only after that flush is the log reset to a fresh header based on the new snapshot sequence. A threshold checkpoint is a full snapshot write, so it costs time proportional to the store.
+- **Open decides by sequence.** The log's base sequence is compared with the newest valid snapshot. Equal: the log is replayed on top of it. Older: the log was already folded into that snapshot and is discarded. Newer: impossible under this ordering, so it is refused as corrupt rather than guessed.
+- **Torn tails are normal.** A tab killed mid-append leaves a partial last record. Replay stops at the first record that overruns the file, fails its CRC, or does not parse, and truncates the log back to the last good record. A record is applied whole or not at all.
+- **If an append fails** (for example storage quota): for a brand-new id, the in-memory insert is rolled back and the promise rejects, so memory and disk agree. For an upsert of an existing id or a `remove`, the in-memory change stands and the promise rejects; it becomes durable at the next successful checkpoint. Treat upserts and removes as **at least once**: a rejection does not mean the change was discarded.
+- **Reopen cost.** Opening replays up to 2,000 records on top of the snapshot decode, so reopen time grows with store size (p95 325 ms on Firefox at about 6,000 documents, below).
 
 **Errors you can act on.** Each has a stable `name`, preserved across the worker boundary, so `switch (err.name)` works:
 
@@ -94,7 +108,16 @@ try {
 
 - **Not power-loss durability.** OPFS `flush()` guarantees content consistency, not `fsync`. The guarantee is "survives a tab kill, crash, or reload", not "survives power loss or an OS crash". Keep a server-side copy of anything irreplaceable.
 - **The browser can still delete your data.** Safari removes all script-writable storage for an origin after 7 days of Safari use without interacting with the site, unless the app is installed to the Home Screen. `persist()` grants are heuristic and differ per browser.
-- **No benchmark or crash-test results yet.** The behaviour above is covered by unit tests against an in-memory fake file system; a published chaos/crash-injection suite is the next phase, and no crash-safety numbers are claimed here.
+
+**Crash-tested.** `npm run test:chaos` (in `js/`) drives headless browsers through kill-the-tab cycles: open the store, insert a random batch, kill the page at a random moment (including mid-insert), reopen, and verify that every acknowledged id is present by querying its exact text. Results on 2026-10-10:
+
+| Browser | Cycles | Acked writes | Lost | Reopen p50 / p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Chromium 149 | 1,000 | 5,887 | **0** | 64 / 83 ms |
+| Firefox 151 | 1,000 | 6,012 | **0** | 174 / 325 ms |
+| WebKit | not run | n/a | n/a | n/a |
+
+Chromium recovered 1 torn tail. The harness forces a checkpoint every 50 logged records (versus the 2,000-record production default) so that kills also land during and right after checkpoints; batches are 1 to 20 documents and the kill lands at a random point, including mid-insert. WebKit is not covered: Playwright WebKit would not launch on the CI host. As a negative control, a build with the log write deferred by 30 ms reported every acknowledged write in a 30-cycle run as lost, which shows the harness detects loss. Details and the re-run recipe: [crash-test results](./docs/chaos.html).
 
 ---
 

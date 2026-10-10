@@ -5,7 +5,7 @@
  */
 
 import type { Role } from './coordinator.ts';
-import type { Device, QueryResult } from './types.ts';
+import type { Device, Durability, QueryResult } from './types.ts';
 
 export type RequestId = number;
 
@@ -17,6 +17,11 @@ export interface OpenRequest {
   device?: Device;
   /** Persist to OPFS when available. Defaults to `true`. */
   persist?: boolean;
+  /**
+   * `'strict'` (default): every insert/remove is flushed to OPFS before its
+   * response is sent. `'relaxed'`: acknowledged up to 50 ms before the flush.
+   */
+  durability?: Durability;
 }
 export interface InsertRequest {
   id: RequestId;
@@ -39,6 +44,10 @@ export interface SizeRequest {
   id: RequestId;
   type: 'size';
 }
+/**
+ * Force unflushed write-ahead log records to disk and write a checkpoint (sent
+ * by `Ferrovec.flush`; on a follower, routed to the leader).
+ */
 export interface FlushRequest {
   id: RequestId;
   type: 'flush';

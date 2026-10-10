@@ -75,8 +75,14 @@ export class StoreCorruptError extends Error {
   readonly slots: Array<{ file: string; reason: string }>;
 
   constructor(storeName: string, slots: Array<{ file: string; reason: string }>) {
+    // A write-ahead-log problem (bad header with no snapshot to fall back on,
+    // a log whose base checkpoint is gone, or a geometry mismatch) is not a
+    // "no valid snapshot" condition, so say which file is at fault.
+    const what = slots.some((s) => s.file === 'wal.bin')
+      ? 'its write-ahead log cannot be applied'
+      : 'no valid snapshot';
     super(
-      `[ferrovec] store "${storeName}" is corrupt: no valid snapshot ` +
+      `[ferrovec] store "${storeName}" is corrupt: ${what} ` +
         `(${slots.map((s) => `${s.file}: ${s.reason}`).join('; ')}). ` +
         `Call Ferrovec.destroy(name) to delete it and start over.`,
     );
@@ -102,5 +108,24 @@ export class EmptyOverwriteRefusedError extends Error {
         `left untouched.`,
     );
     this.onDiskCount = onDiskCount;
+  }
+}
+
+/** Why a write-ahead log (or one of its records) could not be used. */
+export type WalCorruptReason = 'bad-header' | 'dims-mismatch';
+
+/**
+ * The write-ahead log (`wal.bin`) is unusable: its header is torn or not a
+ * ferrovec log (`'bad-header'`), or a logged vector's width does not match the
+ * index it is being replayed into (`'dims-mismatch'`). A torn *tail* is not an
+ * error — it is the normal shape of a crash and is silently cut off.
+ */
+export class WalCorruptError extends Error {
+  override name = 'WalCorruptError' as const;
+  readonly reason: WalCorruptReason;
+
+  constructor(reason: WalCorruptReason, detail?: string) {
+    super(`[ferrovec] corrupt write-ahead log (${reason})${detail ? `: ${detail}` : ''}`);
+    this.reason = reason;
   }
 }

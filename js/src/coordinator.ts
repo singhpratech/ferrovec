@@ -73,6 +73,14 @@
  * Defaults are generous (30s) so normal slow paths — a leader still loading its
  * model, a slow first embed — are unaffected.
  *
+ * ### Write-ahead log replay
+ *
+ * The leader's store hands back the log records acknowledged after the last
+ * checkpoint ({@link PersistentStore.initialReplay}); they are replayed inside
+ * `Engine.create` (via {@link LeaderInit.replay}), so a replay that cannot apply
+ * (a logged vector of the wrong width) fails engine construction and the store
+ * is closed without writing, exactly like a model mismatch.
+ *
  * ### Embedding-space check
  *
  * A persisted snapshot records the model its vectors came from. The leader
@@ -87,7 +95,8 @@ import { EmbeddingSpaceMismatchError } from './errors.ts';
 import type { SnapshotMeta } from './snapshot.ts';
 import { createCoreFromBytes } from './core-loader.ts';
 import type { Engine } from './engine.ts';
-import type { QueryResult, VectorCore } from './types.ts';
+import type { Durability, QueryResult, VectorCore } from './types.ts';
+import type { WalRecord } from './wal.ts';
 
 /** The coordination role this session resolved to. */
 export type Role = 'leader' | 'follower' | 'solo';
@@ -100,6 +109,11 @@ export interface LeaderInit {
   initialTexts?: Map<string, string>;
   /** Self-description of the rehydrated snapshot (`null` for legacy/none). */
   initialMeta?: SnapshotMeta | null;
+  /**
+   * Write-ahead-log records to replay on top of {@link core} (pass straight to
+   * `Engine.create({ replay })`). Empty when the log was empty or discarded.
+   */
+  replay?: WalRecord[];
   /** The OPFS-backed (or in-memory) store the engine must persist into. */
   persister: PersistentStore;
 }
@@ -118,8 +132,19 @@ export interface CoordinatorOptions {
   name: string;
   /** Persist to OPFS when available. Defaults to `true`. */
   persist?: boolean;
-  /** Debounce window for snapshot writes, in ms. Defaults to `250`. */
-  debounceMs?: number;
+  /**
+   * `'strict'` (default): every insert/remove is flushed to OPFS before its
+   * promise resolves (survives a tab kill). `'relaxed'`: acknowledged up to
+   * 50 ms before the flush — faster, but a tab kill can lose the last ~50 ms of
+   * acknowledged writes.
+   */
+  durability?: Durability;
+  /** Checkpoint once the log reaches this many bytes (internal; tests override). Defaults to 4 MiB. */
+  checkpointBytes?: number;
+  /** Checkpoint once the log holds this many records (internal; tests override). Defaults to `2000`. */
+  checkpointRecords?: number;
+  /** Relaxed-mode log flush window, in ms (internal; tests override). Defaults to `50`. */
+  relaxedFlushMs?: number;
   /** How the leader materializes its engine. */
   makeEngine: EngineFactory;
   /**
@@ -213,7 +238,11 @@ const PROMOTION_RETRY_DELAY_MS = 200;
 function isPermanentPromotionError(err: unknown): err is Error {
   return (
     err instanceof Error &&
-    (err.name === 'EmbeddingSpaceMismatchError' || err.name === 'StoreCorruptError')
+    (err.name === 'EmbeddingSpaceMismatchError' ||
+      err.name === 'StoreCorruptError' ||
+      // A logged vector of the wrong width: the log will not change between
+      // retries, so neither will the replay failure.
+      err.name === 'WalCorruptError')
   );
 }
 
@@ -259,7 +288,7 @@ export class Coordinator {
 
   readonly #name: string;
   readonly #persist: boolean;
-  readonly #debounceMs: number;
+  readonly #wal: Pick<CoordinatorOptions, 'durability' | 'checkpointBytes' | 'checkpointRecords' | 'relaxedFlushMs'>;
   readonly #makeEngine: EngineFactory;
   readonly #expectedModel: string | undefined;
   readonly #requestTimeoutMs: number;
@@ -309,7 +338,12 @@ export class Coordinator {
   private constructor(options: CoordinatorOptions) {
     this.#name = options.name;
     this.#persist = options.persist ?? true;
-    this.#debounceMs = options.debounceMs ?? 250;
+    this.#wal = {
+      durability: options.durability,
+      checkpointBytes: options.checkpointBytes,
+      checkpointRecords: options.checkpointRecords,
+      relaxedFlushMs: options.relaxedFlushMs,
+    };
     this.#makeEngine = options.makeEngine;
     this.#expectedModel = options.expectedModel;
     this.#requestTimeoutMs = options.requestTimeoutMs ?? 500;
@@ -565,6 +599,10 @@ export class Coordinator {
     // after their request timeout.
     for (const resolve of this.#pending.values()) resolve(TIMEOUT);
     this.#pending.clear();
+    // A follower still in its open() join handshake would otherwise keep
+    // saying hello to an absent leader until openTimeoutMs: reject it now with
+    // the typed error (no-op once the join has settled).
+    this.#rejectJoin(this.#permanentPromotionError());
   }
 
   /** A fresh copy (message + name) of the permanent promotion error, to reject an op with. */
@@ -576,7 +614,8 @@ export class Coordinator {
   }
 
   /**
-   * Open the OPFS store, rehydrate if present, build + bind the engine. When
+   * Open the OPFS store, rehydrate if present (snapshot + log replay), build +
+   * bind the engine. When
    * `requireLock` is set the caller holds the leader Web Lock, so OPFS contention
    * must not degrade to in-memory (see {@link openStore}). On any failure after
    * the store is opened, the store is closed before rethrowing so the OPFS
@@ -585,7 +624,7 @@ export class Coordinator {
   async #becomeLeaderCore(contentionRetries: number, requireLock = false): Promise<void> {
     const store = await openStore(this.#name, {
       persist: this.#persist,
-      debounceMs: this.#debounceMs,
+      ...this.#wal,
       contentionRetries,
       requireLock,
     });
@@ -611,13 +650,17 @@ export class Coordinator {
         initialTexts = snap.texts;
       }
 
+      // The log replay happens inside Engine.create, so a replay that cannot
+      // apply fails here — before bind() — and the catch below closes the
+      // store without writing.
       const engine = await this.#makeEngine({
         core,
         initialTexts,
         initialMeta: snap?.meta ?? null,
+        replay: store.initialReplay,
         persister: store,
       });
-      store.bind(() => engine.snapshot());
+      store.bind(() => engine.snapshot(), { dims: engine.embeddingSpace.dims });
       this.#engine = engine;
       this.#persistent = store.persistent;
     } catch (err) {

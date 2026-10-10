@@ -40,7 +40,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
     "test:real": "FERROVEC_REAL=1 node --test test/real.test.ts",
-    "test:browser": "node --test test/browser/*.test.ts"
+    "test:browser": "node --test test/browser/*.test.ts",
+    "test:chaos": "node test/chaos/harness.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4"

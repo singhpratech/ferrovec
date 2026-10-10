@@ -205,6 +205,7 @@
       <a href="#compare">Compare</a>
       <a href="#roadmap">Roadmap</a>
       <a href="#install">Install</a>
+      <a href="./chaos.html">Crash test</a>
       <a class="tab-demo" href="./demo.html">▶ Live demo</a>
       <a href="https://github.com/singhpratech/ferrovec">GitHub</a>
     </nav>
@@ -290,7 +291,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
     <h2>Everything you need for local semantic search</h2>
     <p class="section-lede">Give it text or vectors. Under the hood it embeds, indexes, searches, <em>persists</em>, and stays consistent across tabs — you touch none of it.</p>
     <div class="features">
-      <div class="feat"><div class="fi">DURABLE</div><h4>Survives the reload</h4><p>The index persists to OPFS and rehydrates on open — your vectors are already there after a refresh, no re-embedding, no rebuild. Snapshots are checksummed (CRC-32) and double-buffered across two files, so a crash mid-write can only damage the write in flight, and a model guard refuses to open a store with the wrong embedding model. Survives a tab kill or reload, not power loss.</p></div>
+      <div class="feat"><div class="fi">DURABLE</div><h4>Survives the reload</h4><p>The index persists to OPFS and rehydrates on open — your vectors are already there after a refresh, no re-embedding, no rebuild. Every write goes to a write-ahead log, flushed before every acknowledgement; 1,000 kill cycles on Chromium and Firefox, 0 lost (<a href="./chaos.html">crash test</a>). Checkpoints are checksummed (CRC-32) and double-buffered across two files, and a model guard refuses to open a store with the wrong embedding model. Survives a tab kill or reload, not power loss.</p></div>
       <div class="feat"><div class="fi">MULTI-TAB</div><h4>Consistent across tabs</h4><p>Single-writer leader election (Web Locks + BroadcastChannel): one tab owns the store, the rest proxy through it, and on close/crash a follower is promoted. No divergence. Nobody else in the browser ships this.</p></div>
       <div class="feat"><div class="fi">HNSW</div><h4>Approximate nearest-neighbor</h4><p>A hand-rolled Hierarchical Navigable Small World graph — the algorithm behind Pinecone, Weaviate, and Qdrant — in a tiny WASM core.</p></div>
       <div class="feat"><div class="fi">INCREMENTAL</div><h4>Insert one at a time</h4><p>Add vectors as they arrive. No rebuild-the-whole-index penalty — the flaw that hobbles every other browser vector lib.</p></div>
@@ -319,7 +320,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
         </div>
       </div>
       <div class="flow">▲ &nbsp;read / write / flush&nbsp; ▼</div>
-      <div class="slab d"><span class="tag">OPFS · durable, origin-private</span><div class="b"><code>/ferrovec/&lt;name&gt;/slot-{a,b}.bin</code>. Checksummed, double-buffered; survives reloads and tab kills; never leaves the device.</div></div>
+      <div class="slab d"><span class="tag">OPFS · durable, origin-private</span><div class="b"><code>/ferrovec/&lt;name&gt;/{slot-a.bin, slot-b.bin, wal.bin}</code>. Checksummed, double-buffered, write-ahead logged; survives reloads and tab kills; never leaves the device.</div></div>
     </div>
   </div>
 </section>
@@ -331,7 +332,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
     <p class="section-lede">In-browser vector search is crowded in 2026 — several libraries, several of them Rust→WASM, do fast HNSW in the tab. The honest differentiator isn't the index; it's what happens on the <em>next</em> reload, and in the <em>second</em> tab. Almost all of them are in-memory. ferrovec is durable and cross-tab.</p>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Library</th><th>Engine</th><th>Index</th><th>Incremental</th><th>Persists in-browser</th><th>Cross-tab safe</th><th>Checksummed, crash-safe file</th></tr></thead>
+        <thead><tr><th>Library</th><th>Engine</th><th>Index</th><th>Incremental</th><th>Persists in-browser</th><th>Cross-tab safe</th><th>Checksummed, crash-tested file</th></tr></thead>
         <tbody>
           <tr class="row-us"><td class="name">ferrovec</td><td>Rust/WASM</td><td class="yes">HNSW</td><td class="yes">yes</td><td class="yes">OPFS, built-in</td><td class="yes">leader election</td><td class="yes">yes</td></tr>
           <tr><td class="name">altor-vec</td><td>Rust/WASM</td><td class="yes">HNSW</td><td class="yes">yes</td><td class="no">in-memory</td><td class="no">no</td><td class="no">no</td></tr>

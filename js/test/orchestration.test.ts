@@ -9,8 +9,9 @@ import assert from 'node:assert/strict';
 
 import { Engine } from '../src/engine.ts';
 import { createCore } from '../src/core-loader.ts';
-import { EmbeddingSpaceMismatchError } from '../src/errors.ts';
+import { EmbeddingSpaceMismatchError, WalCorruptError } from '../src/errors.ts';
 import type { Embedder } from '../src/types.ts';
+import type { WalRecord } from '../src/wal.ts';
 
 const DIMS = 32;
 
@@ -69,8 +70,8 @@ test('engine wiring: insert / query / remove / size + id→text mapping', async 
   assert.equal(engine.size(), 3);
 
   // Remove is idempotent and shrinks the index.
-  assert.equal(engine.remove('feline-doc'), true);
-  assert.equal(engine.remove('feline-doc'), false);
+  assert.equal(await engine.remove('feline-doc'), true);
+  assert.equal(await engine.remove('feline-doc'), false);
   assert.equal(engine.size(), 2);
 
   // The removed id no longer surfaces (and its text mapping is gone).
@@ -108,7 +109,7 @@ test('engine.snapshot().meta reports the live count and the embedder model', asy
   await engine.insert('one', 'a');
   await engine.insert('two', 'b');
   await engine.insert('three', 'c');
-  engine.remove('b');
+  await engine.remove('b');
 
   const snap = engine.snapshot();
   assert.equal(snap.meta.count, engine.size());
@@ -120,19 +121,163 @@ test('engine.snapshot().meta reports the live count and the embedder model', asy
   assert.deepEqual([...snap.texts.keys()].sort(), ['a', 'c']);
 });
 
-test('Engine passes markDirty kinds: insert → "insert", successful remove → "remove"', async () => {
-  const kinds: Array<string | undefined> = [];
+test('Engine appends one WAL record per mutation: insert → insert, successful remove → remove', async () => {
+  const records: WalRecord[] = [];
   const engine = await Engine.create({
     embedder: makeFakeEmbedder(),
     core: await createCore(DIMS),
     persister: {
-      markDirty: (kind) => void kinds.push(kind),
+      append: async (record) => void records.push(record),
       async flush() {},
       async close() {},
     },
   });
-  await engine.insert('x', 'x');
-  engine.remove('x');
-  engine.remove('missing'); // no-op remove does not mark dirty
-  assert.deepEqual(kinds, ['insert', 'remove']);
+  await engine.insert('x marks the spot', 'x');
+  assert.equal(await engine.remove('x'), true);
+  assert.equal(await engine.remove('missing'), false); // a no-op remove logs nothing
+  assert.deepEqual(
+    records.map((r) => [r.kind, r.id]),
+    [
+      ['insert', 'x'],
+      ['remove', 'x'],
+    ],
+  );
+  const first = records[0]!;
+  assert.ok(first.kind === 'insert');
+  assert.equal(first.text, 'x marks the spot');
+  assert.equal(first.vector.length, DIMS);
+});
+
+test('insert()/remove() resolve only after the persister\'s append resolves', async () => {
+  let release: (() => void) | null = null;
+  let appends = 0;
+  const engine = await Engine.create({
+    embedder: makeFakeEmbedder(),
+    core: await createCore(DIMS),
+    persister: {
+      append: () => {
+        appends++;
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+      async flush() {},
+      async close() {},
+    },
+  });
+
+  let acked = false;
+  const insert = engine.insert('pending durability', 'p').then((id) => {
+    acked = true;
+    return id;
+  });
+  // Let the embed + in-memory apply run; the append is now pending.
+  for (let i = 0; i < 20 && appends === 0; i++) await new Promise((r) => setImmediate(r));
+  assert.equal(appends, 1);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(acked, false, 'insert must not resolve before append resolves');
+  assert.equal(engine.size(), 1, 'applied in memory before the append');
+  release!();
+  assert.equal(await insert, 'p');
+  assert.equal(acked, true);
+
+  let removed = false;
+  const remove = engine.remove('p').then((v) => {
+    removed = true;
+    return v;
+  });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(removed, false, 'remove must not resolve before append resolves');
+  release!();
+  assert.equal(await remove, true);
+});
+
+test('Engine.create({ replay }) applies inserts and removes in order, with no persister calls', async () => {
+  const embedder = makeFakeEmbedder();
+  const v = (t: string): Promise<Float32Array> => embedder.embed(t);
+  const replay: WalRecord[] = [
+    { kind: 'insert', id: 'a', vector: await v('alpha one'), text: 'alpha one' },
+    { kind: 'insert', id: 'b', vector: await v('bravo two'), text: 'bravo two' },
+    { kind: 'remove', id: 'a' },
+    { kind: 'insert', id: 'c', vector: await v('charlie three'), text: 'charlie three' },
+    { kind: 'insert', id: 'b', vector: await v('bravo replaced'), text: 'bravo replaced' },
+    { kind: 'insert', id: 'auto-4', vector: await v('auto four'), text: 'auto four' },
+  ];
+  const calls: string[] = [];
+  const engine = await Engine.create({
+    embedder,
+    core: await createCore(DIMS),
+    replay,
+    persister: {
+      append: async (r) => void calls.push(`append ${r.kind}`),
+      flush: async () => void calls.push('flush'),
+      close: async () => void calls.push('close'),
+    },
+  });
+  assert.deepEqual(calls, [], 'replay must not touch the persister');
+  assert.equal(engine.size(), 3, 'a removed, b upserted, c and auto-4 inserted');
+  const hits = await engine.query('bravo replaced', 1);
+  assert.equal(hits[0]?.id, 'b');
+  assert.equal(hits[0]?.text, 'bravo replaced');
+  assert.ok(!(await engine.query('alpha one', 3)).some((h) => h.id === 'a'));
+  assert.equal(await engine.insert('fresh'), 'auto-5', 'auto ids resume past replayed ones');
+});
+
+test('Engine.create({ replay }) with a wrong-width logged vector throws WalCorruptError', async () => {
+  await assert.rejects(
+    Engine.create({
+      embedder: makeFakeEmbedder(),
+      core: await createCore(DIMS),
+      replay: [{ kind: 'insert', id: 'x', vector: new Float32Array(DIMS * 2), text: 'x' }],
+    }),
+    (err: unknown) => {
+      assert.ok(err instanceof WalCorruptError);
+      assert.equal(err.name, 'WalCorruptError');
+      assert.equal(err.reason, 'dims-mismatch');
+      return true;
+    },
+  );
+});
+
+test('append rejection: a new insert rolls back; an upsert and a remove stay applied (at-least-once)', async () => {
+  let failAppends = false;
+  const engine = await Engine.create({
+    embedder: makeFakeEmbedder(),
+    core: await createCore(DIMS),
+    persister: {
+      append: async () => {
+        if (failAppends) throw new Error('simulated QuotaExceededError');
+      },
+      async flush() {},
+      async close() {},
+    },
+  });
+  await engine.insert('kept alpha document', 'keep');
+  await engine.insert('doomed bravo document', 'doomed');
+  assert.equal(engine.size(), 2);
+  failAppends = true;
+
+  // New id: rejected and rolled back — not counted, not queryable, not snapshotted.
+  await assert.rejects(engine.insert('ghost zulu yankee xray', 'ghost'), /QuotaExceeded/);
+  assert.equal(engine.size(), 2, 'size unchanged after a rejected new insert');
+  const ghostHits = await engine.query('ghost zulu yankee xray', 5);
+  assert.ok(!ghostHits.some((h) => h.id === 'ghost'), 'the rolled-back item is not returned');
+  assert.ok(!engine.snapshot().texts.has('ghost'), 'and would not reach a checkpoint');
+
+  // Auto id: rolled back the same way.
+  await assert.rejects(engine.insert('auto ghost whiskey'), /QuotaExceeded/);
+  assert.equal(engine.size(), 2);
+
+  // Upsert of an existing id: rejected, but the new text stays in place.
+  await assert.rejects(engine.insert('kept alpha rewritten', 'keep'), /QuotaExceeded/);
+  assert.equal(engine.size(), 2);
+  const upsertHits = await engine.query('kept alpha rewritten', 1);
+  assert.equal(upsertHits[0]?.id, 'keep');
+  assert.equal(upsertHits[0]?.text, 'kept alpha rewritten');
+
+  // Remove: rejected, but the item is still gone.
+  await assert.rejects(engine.remove('doomed'), /QuotaExceeded/);
+  assert.equal(engine.size(), 1);
+  assert.ok(!(await engine.query('doomed bravo document', 5)).some((h) => h.id === 'doomed'));
+  assert.equal(await engine.remove('doomed'), false, 'reported gone');
 });

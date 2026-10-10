@@ -7,6 +7,8 @@ Cargo.lock
 js/node_modules
 js/dist
 js/.tsup
+# chaos-harness raw run output (the published summary is js/test/chaos/RESULTS.md)
+js/test/chaos/results/
 .tsup
 *.tsbuildinfo
 

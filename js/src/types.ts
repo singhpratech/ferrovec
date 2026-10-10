@@ -6,6 +6,7 @@
  */
 
 import type { SnapshotMeta } from './snapshot.ts';
+import type { WalRecord } from './wal.ts';
 
 /**
  * Turns text into a dense vector. The default implementation wraps
@@ -52,20 +53,16 @@ export interface VectorCore {
  *
  * Kept DOM-free so `Engine` stays Node-testable: the default is a no-op, and the
  * worker injects the OPFS-backed store (see `persistence.ts`). `Engine` calls
- * {@link markDirty} after every mutation, {@link flush} to force a pending
- * write, and {@link close} for a final flush + resource release.
+ * {@link append} for every mutation **after** applying it in memory and
+ * **before** acknowledging it to the caller, so the returned promise of
+ * `insert`/`remove` is the durability acknowledgement.
  */
 export interface Persister {
-  /**
-   * Note that the index changed; implementations debounce an actual write.
-   * `kind` tells the store whether the change could legitimately shrink the
-   * index (`'remove'`), which the empty-overwrite guard needs to know. No-op
-   * persisters ignore it.
-   */
-  markDirty(kind?: 'insert' | 'remove'): void;
-  /** Force any pending snapshot to be persisted now. */
+  /** Append one mutation. Resolves once the record is durable per the store's durability mode. */
+  append(record: WalRecord): Promise<void>;
+  /** Checkpoint now (full snapshot) and flush. */
   flush(): Promise<void>;
-  /** Final flush and release of the underlying handle/lock. */
+  /** Final checkpoint + release of handles. */
   close(): Promise<void>;
 }
 
@@ -82,6 +79,21 @@ export interface QueryResult {
    */
   score: number;
 }
+
+/**
+ * When an `insert`/`remove` is acknowledged relative to its write-ahead-log
+ * record reaching OPFS.
+ *
+ * - `'strict'` (default): every insert/remove is flushed to OPFS before its
+ *   promise resolves, so an acknowledged write survives a tab kill.
+ * - `'relaxed'`: the promise resolves as soon as the record is written, and the
+ *   log is flushed at most every 50 ms. Faster, but a tab kill can lose the
+ *   last ~50 ms of acknowledged writes.
+ *
+ * Either way OPFS `flush()` is content consistency, not `fsync`: the guarantee
+ * is "survives a tab kill / crash and reload", not "survives power loss".
+ */
+export type Durability = 'strict' | 'relaxed';
 
 /** Backend the transformers.js pipeline should run on. */
 export type Device = 'webgpu' | 'wasm' | 'auto';
@@ -110,8 +122,9 @@ export interface EngineCreateOptions {
    */
   dims?: number;
   /**
-   * Persistence sink invoked after each mutation. Defaults to a no-op (pure
-   * in-memory). The worker injects an OPFS-backed store.
+   * Persistence sink each mutation is appended to before it is acknowledged.
+   * Defaults to a no-op (pure in-memory). The worker injects an OPFS-backed
+   * store.
    */
   persister?: Persister;
   /**
@@ -125,4 +138,12 @@ export interface EngineCreateOptions {
    * dimensionality does not match the embedder's.
    */
   initialMeta?: SnapshotMeta | null;
+  /**
+   * Write-ahead-log records to apply, in order, on top of the injected (or
+   * fresh) core before the engine is returned — the mutations acknowledged
+   * after the last checkpoint. Applied directly to the core and the text
+   * sidecar with **no** persister calls (they are already durable). A logged
+   * vector whose width is not the engine's dims throws `WalCorruptError`.
+   */
+  replay?: WalRecord[];
 }

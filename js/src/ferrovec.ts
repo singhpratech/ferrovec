@@ -8,6 +8,7 @@
 
 import type { Role } from './coordinator.ts';
 import type {
+  FlushResult,
   InsertResult,
   OpenResult,
   RemoveResult,
@@ -16,7 +17,7 @@ import type {
   WorkerRequest,
   WorkerRequestBody,
 } from './protocol.ts';
-import type { Device, QueryResult } from './types.ts';
+import type { Device, Durability, QueryResult } from './types.ts';
 
 /** Options for {@link Ferrovec.open}. */
 export interface FerrovecOptions {
@@ -42,6 +43,19 @@ export interface FerrovecOptions {
    * {@link Ferrovec.storagePersisted} stays `false`.
    */
   requestPersistentStorage?: boolean;
+  /**
+   * When an `insert`/`remove` promise resolves relative to the write reaching
+   * OPFS. Defaults to `'strict'`.
+   *
+   * - `'strict'`: every insert/remove is flushed to OPFS before its promise
+   *   resolves, so an acknowledged write survives a tab kill.
+   * - `'relaxed'`: the promise resolves up to 50 ms before the flush. Faster,
+   *   but a tab kill can lose the last ~50 ms of acknowledged writes.
+   *
+   * Neither is an `fsync`: the guarantee is "survives a tab kill / crash and
+   * reload", not "survives power loss".
+   */
+  durability?: Durability;
 }
 
 /** Options for {@link Ferrovec.insert}. */
@@ -144,6 +158,7 @@ export class Ferrovec {
       model: options.model,
       device: options.device,
       persist: options.persist,
+      durability: options.durability,
     });
     client.#persistent = result.persistent;
     client.#role = result.role;
@@ -226,6 +241,17 @@ export class Ferrovec {
   async size(): Promise<number> {
     const result = await this.#send<SizeResult>({ type: 'size' });
     return result.size;
+  }
+
+  /**
+   * Force any unflushed write-ahead log records to disk and write a checkpoint
+   * (a full snapshot). This is how a `durability: 'relaxed'` caller makes a
+   * batch of acknowledged writes durable without closing the index. In
+   * `'strict'` mode every acknowledged write is already durable; `flush()` then
+   * just folds the log into a snapshot.
+   */
+  async flush(): Promise<void> {
+    await this.#send<FlushResult>({ type: 'flush' });
   }
 
   /** Close the index and terminate the worker. */

@@ -11,16 +11,20 @@
  * `opfs.test.ts` / `coord.test.ts` / `durability.test.ts` running in Chromium.
  *
  * Durability test hooks (only legal while no store is open in this worker):
- * `corrupt` truncates one slot file in place (a simulated torn write), `slots`
- * reports each slot's size and decoded sequence, and `destroy` mirrors the
- * production worker's store deletion.
+ * `corrupt` truncates one slot file (or `wal.bin`) in place (a simulated torn
+ * write), `slots` reports each slot's size, decoded sequence and count plus the
+ * write-ahead log's size, base sequence and record count, and `destroy` mirrors
+ * the production worker's store deletion. `open` also reports every
+ * `console.warn` the store emitted while opening (e.g. a torn log tail cut off),
+ * which the chaos harness counts.
  */
 
 import { Coordinator } from '../../src/coordinator.ts';
 import { Engine } from '../../src/engine.ts';
 import { destroyStore, sanitizeName } from '../../src/persistence.ts';
 import { decodeSnapshot } from '../../src/snapshot.ts';
-import type { Embedder } from '../../src/types.ts';
+import type { Durability, Embedder } from '../../src/types.ts';
+import { decodeWalHeader, scanWal } from '../../src/wal.ts';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 const DIMS = 32;
@@ -73,11 +77,15 @@ interface Req {
   k?: number;
   /** Model id reported by the fake embedder (and expected of the store). */
   model?: string;
-  /** Snapshot debounce window, in ms. Defaults to `50`. */
-  debounceMs?: number;
-  /** `corrupt`: which slot file to truncate. */
-  slot?: 'a' | 'b';
-  /** `corrupt`: new length of the slot file. */
+  /** Durability mode for `open`. Defaults to the store's default (`'strict'`). */
+  durability?: Durability;
+  /** Checkpoint after this many log records (store default when omitted). */
+  checkpointRecords?: number;
+  /** Checkpoint after this many log bytes (store default when omitted). */
+  checkpointBytes?: number;
+  /** `corrupt`: which file to truncate — a slot, or the write-ahead log. */
+  slot?: 'a' | 'b' | 'wal';
+  /** `corrupt`: new length of the file. */
   truncateTo?: number;
   // ---- fault-injection knobs (used by coord-defects.test.ts) ----
   /** Make the next N `makeEngine` calls throw (tests leader-init/promotion failure). */
@@ -102,17 +110,37 @@ interface Req {
 // no engine at open; its first makeEngine call is the promotion attempt).
 let failEngineRemaining = 0;
 
-async function open(req: Req): Promise<{ persistent: boolean; role: string }> {
+async function open(req: Req): Promise<{ persistent: boolean; role: string; warnings: string[] }> {
   if (typeof req.failEngineTimes === 'number') failEngineRemaining = req.failEngineTimes;
-  const coordinator = await Coordinator.open({
+  // Capture what the store warns about while opening (torn log tail, discarded
+  // log header, ...) so a harness can count recoveries; still forward to the
+  // real console.
+  const warnings: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...args: unknown[]): void => {
+    warnings.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(' '));
+    realWarn.apply(console, args);
+  };
+  try {
+    store = await openCoordinator(req);
+  } finally {
+    console.warn = realWarn;
+  }
+  return { persistent: store.persistent, role: store.role, warnings };
+}
+
+function openCoordinator(req: Req): Promise<Coordinator> {
+  return Coordinator.open({
     name: req.name ?? 'test',
     persist: req.persist,
-    debounceMs: req.debounceMs ?? 50,
+    durability: req.durability,
+    checkpointRecords: req.checkpointRecords,
+    checkpointBytes: req.checkpointBytes,
     expectedModel: req.model ?? FAKE_MODEL,
     requestTimeoutMs: 250,
     openTimeoutMs: req.openTimeoutMs,
     opTimeoutMs: req.opTimeoutMs,
-    makeEngine: async ({ core, initialTexts, initialMeta, persister }) => {
+    makeEngine: async ({ core, initialTexts, initialMeta, replay, persister }) => {
       if (req.slowEngineMs && req.slowEngineMs > 0) {
         await new Promise((r) => setTimeout(r, req.slowEngineMs));
       }
@@ -125,6 +153,7 @@ async function open(req: Req): Promise<{ persistent: boolean; role: string }> {
         core,
         initialTexts,
         initialMeta,
+        replay,
         persister,
       });
       if (req.emptySnapshot) {
@@ -137,8 +166,6 @@ async function open(req: Req): Promise<{ persistent: boolean; role: string }> {
       return engine;
     },
   });
-  store = coordinator;
-  return { persistent: coordinator.persistent, role: coordinator.role };
 }
 
 /** The store's OPFS directory (must already exist). */
@@ -154,11 +181,11 @@ interface SyncHandle {
   close(): void;
 }
 
-/** Test hook: truncate a slot file in place, simulating a torn write. */
+/** Test hook: truncate a slot file (or the log) in place, simulating a torn write. */
 async function corrupt(req: Req): Promise<{ corrupted: true }> {
   if (store) throw new Error('corrupt is only legal with no store open in this worker');
   const dir = await storeDir(req.name ?? 'test');
-  const file = await dir.getFileHandle(`slot-${req.slot ?? 'a'}.bin`);
+  const file = await dir.getFileHandle(req.slot === 'wal' ? 'wal.bin' : `slot-${req.slot ?? 'a'}.bin`);
   const handle = await (
     file as unknown as { createSyncAccessHandle(): Promise<SyncHandle> }
   ).createSyncAccessHandle();
@@ -171,13 +198,43 @@ async function corrupt(req: Req): Promise<{ corrupted: true }> {
   return { corrupted: true };
 }
 
-/** Test hook: each slot's size and decoded sequence (`null` if undecodable). */
-async function slots(req: Req): Promise<Record<string, { size: number; sequence: number | null; count: number | null }>> {
+interface SlotInfo {
+  size: number;
+  sequence: number | null;
+  count: number | null;
+}
+interface WalInfo {
+  size: number;
+  /** Header base sequence; `null` when the log has no valid header. */
+  base: number | null;
+  records: number;
+}
+
+/**
+ * Read a store file's bytes. A just-terminated worker's sync access handle is
+ * released asynchronously and blocks `getFile()` meanwhile, so retry briefly.
+ * Resolves `null` if the file does not exist.
+ */
+async function readStoreFile(dir: FileSystemDirectoryHandle, name: string): Promise<Uint8Array | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const handle = await dir.getFileHandle(name);
+      return new Uint8Array(await (await handle.getFile()).arrayBuffer());
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'NotFoundError') return null;
+      if (attempt >= 100) throw err;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+}
+
+/** Test hook: each slot's size, decoded sequence and count, and the log's shape. */
+async function slots(req: Req): Promise<{ a: SlotInfo; b: SlotInfo; wal: WalInfo }> {
   if (store) throw new Error('slots is only legal with no store open in this worker');
   const dir = await storeDir(req.name ?? 'test');
-  const out: Record<string, { size: number; sequence: number | null; count: number | null }> = {};
+  const out: Record<string, SlotInfo> = {};
   for (const slot of ['a', 'b']) {
-    const bytes = new Uint8Array(await (await (await dir.getFileHandle(`slot-${slot}.bin`)).getFile()).arrayBuffer());
+    const bytes = (await readStoreFile(dir, `slot-${slot}.bin`)) ?? new Uint8Array(0);
     let sequence: number | null = null;
     let count: number | null = null;
     try {
@@ -189,7 +246,16 @@ async function slots(req: Req): Promise<Record<string, { size: number; sequence:
     }
     out[slot] = { size: bytes.length, sequence, count };
   }
-  return out;
+  const walBytes = (await readStoreFile(dir, 'wal.bin')) ?? new Uint8Array(0);
+  const wal: WalInfo = { size: walBytes.length, base: null, records: 0 };
+  try {
+    const header = decodeWalHeader(walBytes);
+    wal.base = Number(header.baseSequence);
+    wal.records = scanWal(walBytes, header.dims).records.length;
+  } catch {
+    /* empty / header-less log */
+  }
+  return { a: out.a!, b: out.b!, wal };
 }
 
 async function handle(req: Req): Promise<unknown> {

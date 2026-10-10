@@ -32,8 +32,9 @@ function requireStore(): Coordinator {
 /**
  * Open the coordinated store. The {@link Coordinator} elects a leader via the
  * Web Locks API; whichever worker wins builds the authoritative {@link Engine}
- * here (real transformers embedder + wasm core, rehydrated from OPFS when a
- * prior snapshot exists). Followers build no engine and proxy to the leader.
+ * here (real transformers embedder + wasm core, rehydrated from OPFS — the last
+ * checkpoint plus the write-ahead log replayed on top — when a prior store
+ * exists). Followers build no engine and proxy to the leader.
  */
 async function open(request: Extract<WorkerRequest, { type: 'open' }>): Promise<Coordinator> {
   // Re-opening in the same worker: close the previous coordinator first so its
@@ -47,14 +48,16 @@ async function open(request: Extract<WorkerRequest, { type: 'open' }>): Promise<
   const coordinator = await Coordinator.open({
     name: request.name,
     persist: request.persist,
+    durability: request.durability,
     expectedModel: request.model ?? DEFAULT_MODEL,
-    makeEngine: ({ core, initialTexts, initialMeta, persister }) =>
+    makeEngine: ({ core, initialTexts, initialMeta, replay, persister }) =>
       Engine.create({
         model: request.model,
         device: request.device,
         core,
         initialTexts,
         initialMeta,
+        replay,
         persister,
       }),
   });

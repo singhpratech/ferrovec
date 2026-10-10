@@ -11,15 +11,21 @@
  * every snapshot it produces, so a persisted store can later refuse to be
  * reopened with a different model. Dimensionality is verified here, against an
  * injected (rehydrated) core, because it is only known once the embedder loads.
+ *
+ * Durability contract: every mutation is applied in memory, then appended to
+ * the persister's write-ahead log, and only then acknowledged (the returned
+ * promise resolves). On open, the records logged since the last checkpoint are
+ * replayed onto the rehydrated core inside {@link Engine.create}, so a failed
+ * replay fails engine construction before anything can be written.
  */
 
-import { EmbeddingSpaceMismatchError } from './errors.ts';
+import { EmbeddingSpaceMismatchError, WalCorruptError } from './errors.ts';
 import { SNAPSHOT_WRITER, type EmbeddingSpace, type SnapshotSource } from './snapshot.ts';
 import type { Embedder, EngineCreateOptions, Persister, QueryResult, VectorCore } from './types.ts';
 
 /** A {@link Persister} that does nothing — the default (pure in-memory) sink. */
 const NO_PERSIST: Persister = {
-  markDirty() {},
+  async append() {},
   async flush() {},
   async close() {},
 };
@@ -86,13 +92,28 @@ export class Engine {
     }
 
     const core = options.core ?? (await Engine.#defaultCore(dims));
-    return new Engine(
-      embedder,
-      core,
-      options.persister ?? NO_PERSIST,
-      options.initialTexts ?? new Map<string, string>(),
-      embeddingSpace,
-    );
+    const texts = options.initialTexts ?? new Map<string, string>();
+
+    // Replay the write-ahead log on top of the checkpoint, in order, before the
+    // engine exists (so auto-id resumption below sees replayed ids too). These
+    // records are already durable, so the persister is not involved.
+    for (const record of options.replay ?? []) {
+      if (record.kind === 'insert') {
+        if (record.vector.length !== dims) {
+          throw new WalCorruptError(
+            'dims-mismatch',
+            `logged insert "${record.id}" has ${record.vector.length} dims, the index has ${dims}`,
+          );
+        }
+        core.insert(record.id, record.vector);
+        texts.set(record.id, record.text);
+      } else {
+        core.remove(record.id);
+        texts.delete(record.id);
+      }
+    }
+
+    return new Engine(embedder, core, options.persister ?? NO_PERSIST, texts, embeddingSpace);
   }
 
   /** The embedding model, dimensionality, and metric this engine's vectors live in. */
@@ -112,15 +133,33 @@ export class Engine {
 
   /**
    * Embed `text` and insert it under `id` (auto-generated if omitted). Upserts:
-   * re-inserting an existing id replaces its vector and stored text. Returns the
-   * id used.
+   * re-inserting an existing id replaces its vector and stored text. Resolves
+   * with the id used only once the mutation is durable per the persister's
+   * durability mode — the resolution *is* the acknowledgement.
+   *
+   * If the write-ahead log append rejects (quota, oversized id, ...) the
+   * rejection is rethrown, and:
+   * - a **new** id is exactly-once: the item is rolled back out of memory, so
+   *   it is neither queryable nor written by a later checkpoint;
+   * - an **upsert** of an existing id is at-least-once: the new vector and text
+   *   stay in memory and become durable at the next successful checkpoint, even
+   *   though this call rejected.
    */
   async insert(text: string, id?: string): Promise<string> {
     const key = id ?? `auto-${this.#autoId++}`;
     const vector = await this.#embedder.embed(text);
+    const isNew = !this.#texts.has(key);
     this.#core.insert(key, vector);
     this.#texts.set(key, text);
-    this.#persister.markDirty('insert');
+    try {
+      await this.#persister.append({ kind: 'insert', id: key, vector, text });
+    } catch (err) {
+      if (isNew) {
+        this.#core.remove(key);
+        this.#texts.delete(key);
+      }
+      throw err;
+    }
     return key;
   }
 
@@ -135,11 +174,18 @@ export class Engine {
     }));
   }
 
-  /** Remove the item stored under `id`. Returns `true` if it existed. */
-  remove(id: string): boolean {
+  /**
+   * Remove the item stored under `id`. Resolves `true` if it existed — after the
+   * removal is durable — and `false` (logging nothing) if it did not.
+   *
+   * Removes are at-least-once: if the write-ahead log append rejects, the
+   * rejection is rethrown but the item stays removed in memory, and the removal
+   * becomes durable at the next successful checkpoint.
+   */
+  async remove(id: string): Promise<boolean> {
     this.#texts.delete(id);
     const removed = this.#core.remove(id);
-    if (removed) this.#persister.markDirty('remove');
+    if (removed) await this.#persister.append({ kind: 'remove', id });
     return removed;
   }
 
@@ -168,12 +214,12 @@ export class Engine {
     };
   }
 
-  /** Force any pending persistence write to complete now. */
+  /** Checkpoint now: write a full snapshot and reset the write-ahead log. */
   flush(): Promise<void> {
     return this.#persister.flush();
   }
 
-  /** Final flush and release of the persistence handle. */
+  /** Final checkpoint and release of the persistence handles. */
   close(): Promise<void> {
     return this.#persister.close();
   }

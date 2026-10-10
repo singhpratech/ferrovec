@@ -22,8 +22,10 @@ export {
   EmbeddingSpaceMismatchError,
   StoreCorruptError,
   EmptyOverwriteRefusedError,
+  WalCorruptError,
 } from './errors.ts';
-export type { SnapshotCorruptReason } from './errors.ts';
+export type { SnapshotCorruptReason, WalCorruptReason } from './errors.ts';
+export type { WalRecord } from './wal.ts';
 export type { EmbeddingSpace, SnapshotMeta, SnapshotSource } from './snapshot.ts';
 
 export type {
@@ -32,6 +34,7 @@ export type {
   Persister,
   QueryResult,
   Device,
+  Durability,
   EmbedderOptions,
   EngineCreateOptions,
 } from './types.ts';

@@ -48,7 +48,8 @@ const id = await db.insert('some text', { id: 'doc-1' }); // explicit id (upsert
 const hits = await db.query('query text', 10);            // k nearest, nearest-first
 await db.remove('doc-1');                                 // → boolean
 await db.size();                                          // → number of live items
-await db.close();                                         // final flush + terminate worker
+await db.flush();                                         // force log flush + checkpoint
+await db.close();                                         // final checkpoint + terminate worker
 ```
 
 Each hit is `{ id: string; text?: string; score: number }`, where `score` is
@@ -70,17 +71,28 @@ await again.size();                        // your items are still there
 console.log(again.persistent);             // true when running from disk
 ```
 
+Bulk ingest can trade the last ~50 ms for speed, then force durability:
+
+```ts
+const db = await Ferrovec.open('notes', { durability: 'relaxed' });
+/* ... many inserts ... */ await db.flush(); // log flush + checkpoint
+```
+
 How it works:
 
 - The worker holds exclusive `FileSystemSyncAccessHandle`s (worker-only,
   secure-context-only) on `ferrovec/<name>/slot-a.bin` and `slot-b.bin` in OPFS.
-- Writes are **full snapshots, debounced ~250 ms**: each `insert`/`remove` marks
-  the store dirty and arms the debounce. A commit encodes a complete FVS2
-  snapshot with the next sequence number and writes it (`write` → `truncate` →
-  `flush`) to the slot that does **not** hold the current committed version;
-  only after `flush` does that slot become current. On open, both slots are
-  decoded and the valid one with the highest sequence wins.
-  `close()` always performs a final synchronous commit before releasing the lock.
+- Every `insert`/`remove` is appended to a write-ahead log, `wal.bin`, next to
+  the slot files. With the default `durability: 'strict'` the record is flushed
+  to OPFS before the promise resolves; `durability: 'relaxed'` acknowledges
+  immediately and flushes on a 50 ms timer (for bulk ingest; can lose the last
+  ~50 ms on a tab kill).
+- Every 2,000 records or 4 MiB, and on `flush()`/`close()`, a **checkpoint**
+  writes a complete FVS2 snapshot (`write` → `truncate` → `flush`) to the slot
+  that does **not** hold the current committed version, and only then resets the
+  log. On open, the valid snapshot with the highest sequence wins and the log is
+  replayed on top of it. `close()` always performs a final checkpoint before
+  releasing the lock.
 - The snapshot contains the serialized vector index **and** the id→text sidecar,
   framed together so a reload restores both atomically.
 
@@ -113,6 +125,21 @@ coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
   written; the previous commit survives and is recovered on the next open. If
   every non-empty slot is unreadable, `open` throws `StoreCorruptError` rather
   than silently starting empty.
+- **Write-ahead log.** In `'strict'` mode (default) each insert/remove record,
+  CRC-32 framed, is flushed to `wal.bin` before its promise resolves: the
+  acknowledgement is the durability point. Checkpoints (every 2,000 records or
+  4 MiB, and on `flush()`/`close()`) write a full snapshot to the non-current
+  slot and only then reset the log. On open the log's base sequence is compared
+  with the newest valid snapshot: equal replays, older is already folded in and
+  is discarded, newer is refused as corrupt rather than guessed. A tab killed
+  mid-append leaves a torn tail; replay stops at the first record that overruns
+  the file, fails its CRC or does not parse, and truncates there, so a record is
+  applied whole or not at all.
+- **Append failures.** If the log append for a brand-new id fails (e.g. storage
+  quota), the in-memory insert is rolled back and the promise rejects. For an
+  upsert of an existing id or a remove, the in-memory change stands and the
+  promise rejects; it becomes durable at the next successful checkpoint. That is
+  **at least once** for upserts and removes.
 - **Model guard.** Opening a store with a different embedding model than it was
   written with throws `EmbeddingSpaceMismatchError` before any model download;
   dimensions are re-checked once the embedder loads.
@@ -161,8 +188,24 @@ which the new code ignores once slots exist.
 - Safari deletes all script-writable storage for an origin after 7 days of
   Safari use without interacting with the site, unless the app is installed to
   the Home Screen. `persist()` grants are heuristic.
-- None of this is a benchmark or crash-test result yet; a published chaos suite
-  is the next phase.
+- Reopen time grows with store size: it replays up to 2,000 records on top of
+  the snapshot decode (p95 325 ms on Firefox at about 6,000 documents), and a
+  threshold checkpoint is a full snapshot write.
+
+**Crash-tested.** `npm run test:chaos` kills headless browser tabs at random
+moments (including mid-insert), reopens, and checks every acknowledged id by
+querying its exact text:
+
+| Browser | Cycles | Acked writes | Lost | Reopen p50 / p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Chromium 149 | 1,000 | 5,887 | **0** | 64 / 83 ms |
+| Firefox 151 | 1,000 | 6,012 | **0** | 174 / 325 ms |
+| WebKit | not run | n/a | n/a | n/a |
+
+Chromium recovered 1 torn tail. The harness forces a checkpoint every 50 logged records (versus the 2,000-record production default) so that kills also land during and right after checkpoints; batches are 1 to 20 documents and the kill lands at a random point, including mid-insert. WebKit would not launch on the CI host. A
+negative control with the log write deferred by 30 ms reported every
+acknowledged write in a 30-cycle run as lost, so the harness does detect loss.
+Details: [crash-test results](https://singhpratech.github.io/ferrovec/chaos.html).
 
 ## Multi-tab
 
