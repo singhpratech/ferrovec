@@ -263,7 +263,7 @@ Vectors that are already L2-normalized (e.g. sentence embeddings) pair naturally
 
 ## In the browser
 
-> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — two parts, one page, no server. First the WASM core ranking real MiniLM vectors over 24 sentence embeddings in your tab; then, at the bottom, [a notebook](https://singhpratech.github.io/ferrovec/demo.html#notebook) on the npm package: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged get lost.
+> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — two tabs, one page, no server. First the WASM core ranking real MiniLM vectors over 24 sentence embeddings in your tab; then, under **Use cases**, [a notebook](https://singhpratech.github.io/ferrovec/demo.html#notebook) on the npm package: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged get lost.
 
 `ferrovec` compiles to WebAssembly and exposes a `FerrovecCore` class through `wasm-bindgen`. Build it with [`wasm-pack`](https://rustwasm.github.io/wasm-pack/):
 

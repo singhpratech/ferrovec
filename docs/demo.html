@@ -180,7 +180,7 @@
     --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
     --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --warn-soft: #33290F; --code-bg: #1E1A15; }
   #notebook {
-    margin-top: 3.2rem; padding-top: 2.4rem; border-top: 1px solid var(--line); color: var(--ink); font-family: var(--serif); font-size: 1.05rem; line-height: 1.55;
+    padding-top: 1.6rem; color: var(--ink); font-family: var(--serif); font-size: 1.05rem; line-height: 1.55;
     max-width: 46rem;
     a { color: var(--accent); }
     [hidden] { display: none !important; }
@@ -188,6 +188,10 @@
     h2.nb-title { font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.08; margin: 0 0 0.8rem; letter-spacing: -0.01em; text-wrap: balance; font-family: var(--serif); }
     .nb-lede { font-size: 1.12rem; color: var(--ink-soft); margin: 0; max-width: 40rem; }
     .nb-lede b { color: var(--ink); }
+    .uc { display: flex; flex-wrap: wrap; gap: 0.3rem 0.7rem; margin-top: 1rem; font-family: var(--mono); font-size: 0.76rem; color: var(--ink-faint); }
+    .uc a { color: var(--ink-soft); text-decoration: none; border-bottom: 1px dotted var(--ink-faint); }
+    .uc a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+    h2.sec { scroll-margin-top: 4.5rem; }
   .mono { font-family: var(--mono); }
   .wrap { max-width: 46rem; margin: 0 auto; }
 
@@ -276,6 +280,12 @@
   pre .c { color: var(--ink-faint); } pre .k { color: var(--accent); } pre .s { color: var(--good); }
 
   }
+  .tabs { display: flex; gap: 0.4rem; margin: 1.3rem 0 0; border-bottom: 1px solid var(--border, var(--line)); }
+  .tab { font-family: var(--mono); font-size: 0.82rem; padding: 0.6rem 0.9rem; background: transparent; color: var(--ink-soft); border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--rust, var(--accent)); border-bottom-color: currentColor; font-weight: 600; }
+  .tab:focus-visible { outline: 2px solid var(--wasm); outline-offset: 2px; border-radius: 4px; }
+  .pane[hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -284,13 +294,17 @@
     <span class="brand"><img class="tb-logo" src="./assets/logo-256.png" alt="ferrovec logo" width="24" height="24" /><b>ferrovec</b><span class="tag">live demo</span></span>
     <span class="spacer"></span>
     <a class="ghost" href="./index.html">&larr; Overview</a>
-    <a class="ghost" href="#notebook">&darr; Notebook</a>
     <a class="ghost" href="https://github.com/singhpratech/ferrovec" target="_blank" rel="noopener">GitHub</a>
     <button class="ghost" id="theme" type="button" aria-label="Toggle theme">&#9788; Theme</button>
   </div>
 </header>
 
 <main class="wrap">
+  <div class="tabs" role="tablist" aria-label="Demo parts">
+    <button class="tab" role="tab" type="button" id="tab-search" data-tab="search" aria-controls="pane-search" aria-selected="true">Semantic search</button>
+    <button class="tab" role="tab" type="button" id="tab-notebook" data-tab="notebook" aria-controls="notebook" aria-selected="false">Use cases · pull the plug</button>
+  </div>
+  <div id="pane-search" class="pane" role="tabpanel" aria-labelledby="tab-search">
   <section class="hero">
     <p class="eyebrow">Real WASM &middot; no server &middot; no network</p>
     <h1>Semantic search, running entirely in this browser tab.</h1>
@@ -363,8 +377,9 @@
 <span class="kw">await</span> db.insert(<span class="st">'the cat curled up in the sun'</span>); <span class="cm">// embed + index</span>
 <span class="kw">const</span> hits = <span class="kw">await</span> db.query(<span class="st">'a sleepy kitten'</span>, 5); <span class="cm">// &rarr; ranked, nearest-first</span></code></pre>
   </section>
-<section id="notebook">
-<p class="nb-eyebrow">Part two · now make it remember</p>
+  </div>
+<section id="notebook" class="pane" role="tabpanel" aria-labelledby="tab-notebook" hidden>
+<p class="nb-eyebrow">Real ferrovec · in this tab · no server</p>
     <h2 class="nb-title">A notebook that remembers.</h2>
     <p class="nb-lede">Write a few notes. Then <b>pull the plug</b> while it is still writing, or open it in a second tab. The notes are in the real ferrovec store: a Rust→WASM index written to this browser's private file system behind a checksummed write-ahead log. <b>What this page acknowledges, it keeps.</b></p>
     <div class="cta">
@@ -372,6 +387,15 @@
       <button class="btn ghost big" type="button" id="tab2-hero">Open a second tab</button>
       <span class="cta-note" id="cta-note">saves 25 notes and reloads mid-save, then shows what survived</span>
     </div>
+    <nav class="uc" aria-label="Use cases">
+      <span>Use cases on this page:</span>
+      <a href="#uc-notes">notes that survive a reload</a>
+      <a href="#uc-break">a tab killed mid-write</a>
+      <a href="#uc-break">a crash during a checkpoint</a>
+      <a href="#uc-break">two tabs, one store</a>
+      <a href="#uc-find">private search over your notes</a>
+      <a href="#uc-hood">the files on disk</a>
+    </nav>
   
 
   <div class="strip" id="strip">
@@ -385,7 +409,7 @@
   <div id="receipt" role="status" aria-live="polite" hidden></div>
 
   <section>
-    <h2 class="sec">Your notes</h2>
+    <h2 class="sec" id="uc-notes">Your notes</h2>
     <p class="sub">Each save is acknowledged only after its log record is on disk. The time shown is how long that took.</p>
     <form class="composer" id="composer">
       <input id="note" type="text" placeholder="Write a note and press Enter…" autocomplete="off" maxlength="400" />
@@ -396,7 +420,7 @@
   </section>
 
   <section>
-    <h2 class="sec">Now try to lose them</h2>
+    <h2 class="sec" id="uc-break">Now try to lose them</h2>
     <p class="sub">Each of these does something real to this tab or its files. The page measures what comes back.</p>
     <div class="break">
       <div class="card">
@@ -420,7 +444,7 @@
   </section>
 
   <section>
-    <h2 class="sec">Find a note</h2>
+    <h2 class="sec" id="uc-find">Find a note</h2>
     <p class="sub" id="find-sub">Nearest-neighbour search over the index, in this tab. With the instant embedder, search by words from the note; for meaning-based search see the <a href="./demo.html">search demo</a>, which runs MiniLM vectors.</p>
     <form class="find" id="findform">
       <input id="q" type="text" placeholder="a few words from a note…" autocomplete="off" />
@@ -430,7 +454,7 @@
   </section>
 
   <section class="hood">
-    <h2 class="sec">Under the hood</h2>
+    <h2 class="sec" id="uc-hood">Under the hood</h2>
     <p class="sub">The store's files in OPFS, read by this page while the store is open. Two snapshot slots alternate; the log holds everything since the newest one.</p>
     <div class="files" id="files"></div>
     <p id="embed-note"></p>
@@ -457,6 +481,21 @@
   </div>
 </footer>
 
+<script>
+(() => {
+  const panes = { notebook: document.getElementById('notebook'), search: document.getElementById('pane-search') };
+  const tabs = [...document.querySelectorAll('.tab')];
+  function show(name, push) {
+    for (const [k, el] of Object.entries(panes)) el.hidden = k !== name;
+    for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.tab === name));
+    if (push) { try { history.replaceState(null, '', '#' + name); } catch { /* ignore */ } }
+  }
+  const fromHash = () => (location.hash === '#notebook' || location.hash === '#minilm' || /^#uc-/.test(location.hash) ? 'notebook' : 'search');
+  show(fromHash(), false);
+  for (const t of tabs) t.addEventListener('click', () => show(t.dataset.tab, true));
+  addEventListener('hashchange', () => show(fromHash(), false));
+})();
+</script>
 <script type="module">
 /* ---- vendored ferrovec wasm-bindgen glue (target: web) ---- */
 /* @ts-self-types="./ferrovec.d.ts" */
@@ -1214,9 +1253,17 @@ async function listAll() {
   return hits.map((h) => ({ id: h.id, text: h.text ?? '' })).sort((x, y) => noteTime(y.id) - noteTime(x.id) || (x.id < y.id ? 1 : -1));
 }
 async function verify(list) {
-  // The chaos harness's check: the note's own text must bring back its id.
+  // Exact check: the id must be in the index with the same text. Listing is
+  // exhaustive, so this never depends on the nearest-neighbour search.
   const lost = [];
-  for (const { id, text } of list) {
+  if (typeof db.list === 'function') {
+    const n = await db.size();
+    const have = new Map();
+    for (let offset = 0; offset < n; offset += 1000) for (const d of await db.list({ offset, limit: 1000 })) have.set(d.id, d.text);
+    for (const { id, text } of list) if (have.get(id) !== text) lost.push(id);
+    return lost;
+  }
+  for (const { id, text } of list) { // older bundle: the chaos harness's query-based check
     const top = await db.query(text, 1);
     if (top[0]?.id === id) continue;
     const wide = await db.query(text, 10);
@@ -1415,7 +1462,6 @@ async function boot() {
     ? `Embeddings: <b>Xenova/all-MiniLM-L6-v2</b> through transformers.js, the package default (about 28 MB on first visit, cached after). <a href="./demo.html#notebook">Back to the instant embedder</a>.`
     : `Embeddings here are a <b>hashed-trigram embedder</b> so the page loads with no download: finding a note by a few of its words works, finding "cat" by "kitten" does not. Everything else is the shipped code. The npm package embeds with MiniLM; <a href="#minilm" id="go-minilm">try this notebook with the real model</a> (about 28 MB once).`;
   $('go-minilm')?.addEventListener('click', () => { setTimeout(() => location.reload(), 0); });
-  if (location.hash === '#notebook' || MINILM) document.getElementById('notebook').scrollIntoView();
 
   const pending = ss.get('pending', null);
   ss.del('pending');
@@ -1454,11 +1500,11 @@ async function boot() {
   if (pending?.kind === 'plug') {
     const lost = await verify(pending.acked);
     const replayed = disk?.wal.records ?? 0;
-    const inflightPresent = pending.inflight ? (await db.query(pending.inflight.text, 10)).some((h) => h.id === pending.inflight.id) : null;
+    const inflightPresent = pending.inflight ? (await verify([pending.inflight])).length === 0 : null;
     const ok = lost.length === 0;
     receipt(ok ? '' : 'bad', `
       <h2>${ok ? 'Back. Nothing acknowledged was lost.' : 'Back, with losses.'}</h2>
-      <p>The reload hit during save #${pending.inflight?.n ?? pending.acked.length + 1} of 25. Every note this page had acknowledged before that was checked by querying its own text.</p>
+      <p>The reload hit during save #${pending.inflight?.n ?? pending.acked.length + 1} of 25. Every note this page had acknowledged before that was checked against the index by id and exact text.</p>
       <div class="facts">
         <div><span>acknowledged</span><b>${pending.acked.length}</b></div>
         <div><span>found</span><b>${pending.acked.length - lost.length}</b></div>

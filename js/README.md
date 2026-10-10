@@ -23,8 +23,8 @@ thread, across reloads, across tabs. Nothing leaves the device.
 [published kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html).
 · [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Live demo**](https://singhpratech.github.io/ferrovec/demo.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
 
-> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — two parts, one page, no
-> server. First the WASM core ranking real MiniLM vectors in your tab; then, at the bottom, a notebook on
+> **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — two tabs, one page, no
+> server. First the WASM core ranking real MiniLM vectors in your tab; then, under **Use cases**, a notebook on
 > this package: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged
 > get lost.
 
