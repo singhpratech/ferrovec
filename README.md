@@ -51,22 +51,22 @@ In-browser vector search is a **crowded space** in 2026 — and this section is 
 
 ferrovec's wedge is exactly that missing half — **durability and consistency**:
 
-| Library | Engine | Embeddings | Persists to | Checksummed file | Durable commit | Multi-tab | Published crash test | Size |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **ferrovec 0.4.0** | Rust→WASM **HNSW** | ✅ built in (MiniLM) | ✅ **OPFS**: two snapshot slots + write-ahead log | ✅ CRC-32 | ✅ flushed before ack | ✅ **Web Locks leader** | ✅ 1,000 cycles × 2 browsers | 77 KB (35 KB gz) |
-| EdgeVec | Rust→WASM HNSW + binary quantization | ❌ bring your own | IndexedDB, one put of the whole blob | ❌ | ❌ (Rust WAL exists, not exposed in the browser) | ❌ single tab by design | ❌ | 217 KB gz (self-reported) |
-| VecLite | Rust→WASM | transformers.js | IndexedDB / JSON blob | ❌ | ❌ | ❌ | ❌ | not published |
-| @ruvector/wasm | Rust→WASM HNSW | ❌ bring your own | IndexedDB vectors; graph rebuilt on load | ❌ | ❌ | ❌ | ❌ | not published |
-| voy | Rust→WASM k-d tree | ❌ bring your own | serialize to string; app stores it | ❌ | ❌ every add returns a new blob | ❌ | ❌ | not published |
-| altor-vec | Rust→WASM HNSW | ❌ bring your own | static index built at deploy, fetched from CDN | ❌ | ❌ | ❌ | ❌ | 54 KB |
-| Orama | JS, brute-force vector scan | plugin | persistence plugin: snapshot blob, app stores it | ❌ | ❌ | ❌ | ❌ | not measured |
-| EntityDB | JS, brute-force cosine | ✅ built in (transformers.js) | IndexedDB, one record per vector | ❌ | ⚠️ per-record IndexedDB transactions | ⚠️ shared DB, no coordination | ❌ | not measured |
-| MeMemo | JS HNSW | ❌ bring your own | IndexedDB vectors, graph in memory | ❌ | ⚠️ per-record | ❌ | ❌ | not measured |
-| hnsw (npm) / TinkerBird | JS HNSW | ❌ bring your own | IndexedDB | ❌ | ⚠️ | ❌ | ❌ | not measured |
-| sqlite-vec in SQLite Wasm | C, brute-force kNN | ❌ bring your own | OPFS through SQLite's VFS | ⚠️ journal, no page checksums by default | ✅ SQLite atomic commit | ❌ one connection per OPFS pool | ❌ | ~1.5 MB wasm |
-| PGlite + pgvector | Postgres in WASM, HNSW / IVFFlat | ❌ bring your own | IndexedDB whole-file flush, or OPFS (worker only, no Safari) | ⚠️ Postgres checksums off by default | ✅ Postgres WAL inside the VFS | ⚠️ BroadcastChannel leader, open bugs | ❌ | ~3 MB gz |
-| DuckDB-wasm + vss | C++, HNSW (experimental) | ❌ bring your own | OPFS WAL + checkpoint | ❌ | ⚠️ HNSW WAL recovery "not implemented" | ❌ one handle per file | ❌ | several MB |
-| turbovec | Rust / Python, flat TurboQuant scan | ❌ | server / local disk — does not build for WASM (64-bit only) | ❌ | ❌ | ❌ | ❌ | n/a |
+| Library | Engine | Index | Incremental | Embeddings | Persists to | Checksummed file | Durable commit | Multi-tab | Published crash test | Size |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **ferrovec 0.4.0** | Rust→WASM | **HNSW** | ✅ | ✅ built in (MiniLM) | ✅ **OPFS**: two snapshot slots + write-ahead log | ✅ CRC-32 | ✅ flushed before ack | ✅ **Web Locks leader** | ✅ 1,000 cycles × 2 browsers | 77 KB (35 KB gz) |
+| EdgeVec | Rust→WASM | HNSW + binary quantization | ✅ | ❌ bring your own | IndexedDB, one put of the whole blob | ❌ | ❌ (Rust WAL exists, not exposed in the browser) | ❌ single tab by design | ❌ | 217 KB gz (self-reported) |
+| VecLite | Rust→WASM | HNSW | ✅ | transformers.js | IndexedDB / JSON blob | ❌ | ❌ | ❌ | ❌ | not published |
+| @ruvector/wasm | Rust→WASM | HNSW | ✅ | ❌ bring your own | IndexedDB vectors; graph rebuilt on load | ❌ | ❌ | ❌ | ❌ | not published |
+| voy | Rust→WASM | k-d tree | ❌ rebuild | ❌ bring your own | serialize to string; app stores it | ❌ | ❌ every add returns a new blob | ❌ | ❌ | not published |
+| altor-vec | Rust→WASM | HNSW | ✅ | ❌ bring your own | static index built at deploy, fetched from CDN | ❌ | ❌ | ❌ | ❌ | 54 KB |
+| Orama | TypeScript | brute-force | ✅ | plugin | persistence plugin: snapshot blob, app stores it | ❌ | ❌ | ❌ | ❌ | not measured |
+| EntityDB | JS + WASM | brute-force | ✅ | ✅ built in (transformers.js) | IndexedDB, one record per vector | ❌ | ⚠️ per-record IndexedDB transactions | ⚠️ shared DB, no coordination | ❌ | not measured |
+| MeMemo | JS | HNSW | ✅ | ❌ bring your own | IndexedDB vectors, graph in memory | ❌ | ⚠️ per-record | ❌ | ❌ | not measured |
+| hnsw (npm) / TinkerBird | JS | HNSW | ✅ | ❌ bring your own | IndexedDB | ❌ | ⚠️ | ❌ | ❌ | not measured |
+| sqlite-vec in SQLite Wasm | C→WASM | brute-force | ✅ | ❌ bring your own | OPFS through SQLite's VFS | ⚠️ journal, no page checksums by default | ✅ SQLite atomic commit | ❌ one connection per OPFS pool | ❌ | ~1.5 MB wasm |
+| PGlite + pgvector | Postgres→WASM | HNSW / IVFFlat | ✅ | ❌ bring your own | IndexedDB whole-file flush, or OPFS (worker only, no Safari) | ⚠️ Postgres checksums off by default | ✅ Postgres WAL inside the VFS | ⚠️ BroadcastChannel leader, open bugs | ❌ | ~3 MB gz |
+| DuckDB-wasm + vss | C++→WASM | HNSW (experimental) | ✅ | ❌ bring your own | OPFS WAL + checkpoint | ❌ | ⚠️ HNSW WAL recovery "not implemented" | ❌ one handle per file | ❌ | several MB |
+| turbovec | Rust / Python | flat TurboQuant scan | ✅ | ❌ | server / local disk — does not build for WASM (64-bit only) | ❌ | ❌ | ❌ | ❌ | n/a |
 
 *What each project documents about itself, checked 2026-10-10. A ❌ means the project does not claim it; ⚠️ means it half-qualifies. Only ferrovec's row has been crash-tested by us ([results](https://singhpratech.github.io/ferrovec/chaos.html)); the SQL engines inherit real transactional commits from SQLite and Postgres, at 20–40× the size and with no ANN index, no Safari, or an experimental flag. This field moves fast; check each project's latest.* If all you need is a fast in-memory ANN for a single page view, several of these are excellent and lighter than ferrovec. Reach for ferrovec when the index has to **outlive the page** and **stay correct across tabs** — a notes app, an offline PWA, or "chat with your docs" that shouldn't re-embed everything on every visit.
 
