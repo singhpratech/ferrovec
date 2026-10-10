@@ -1,6 +1,6 @@
 [package]
 name = "ferrovec"
-version = "0.3.4"
+version = "0.4.0"
 edition = "2021"
 description = "A durable, incremental HNSW vector store built to compile to WebAssembly — the in-browser index that persists to OPFS and stays consistent across tabs. Also a plain native crate."
 license = "MIT"

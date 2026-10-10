@@ -27,7 +27,7 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 - 🪶 **Featherweight & shim-free** — `serde` + `postcard` are the *only* dependencies; the WASM core is ~33 KB gzipped, with no `getrandom` (deterministic splitmix64 PRNG) and no threads, so it's happy on bare `wasm32-unknown-unknown`.
 - ⚡ **SIMD-accelerated** distance on `wasm32 + simd128` with a scalar fallback; `#![deny(unsafe_code)]` everywhere outside the audited kernel. Portable versioned byte format reloads identically native or in-browser.
 
-> **Status — the roadmap is complete, and both registries are on `0.3.4`.** crates.io `0.3.4` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.3.4` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), and cross-tab single-writer leader election (**M6**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+> **Status — both registries are on `0.4.0`.** crates.io `0.4.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.4.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), and — new in `0.4.0` — crash-safe storage (**M7**): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox. See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
 
 ## How ferrovec is different
 
@@ -262,9 +262,9 @@ const restored = FerrovecCore.fromBytes(bytes);
 ```
 
 > The `js/` package wraps this with automatic embedding via transformers.js
-> (**M3**), OPFS persistence (**M4**), and cross-tab leader election (**M6**), so the browser API becomes:
+> (**M3**), crash-safe OPFS persistence (**M4**, **M7**), and cross-tab leader election (**M6**), so the browser API becomes:
 > `const db = await Ferrovec.open('notes'); await db.insert(text); const hits = await db.query('…', 5);`
-> — live on npm as `0.3.4`.
+> — live on npm as `0.4.0`.
 
 To smoke-test WASM compatibility without packaging:
 
@@ -276,15 +276,16 @@ cargo build --target wasm32-unknown-unknown
 
 | | Milestone | Status |
 | --- | --- | --- |
-| **M1** | Pure-Rust HNSW core | ✅ `0.3.4` |
-| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ `0.3.4` |
-| **—** | `compact()` / `clear()` compaction | ✅ `0.3.4` |
-| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.4` |
-| **M4** | OPFS-backed persistence (survives reloads) | ✅ `0.3.4` |
-| **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.3.4` |
-| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.4` |
+| **M1** | Pure-Rust HNSW core | ✅ `0.4.0` |
+| **M2** | WASM boundary (`FerrovecCore`) + SIMD128 kernel | ✅ `0.4.0` |
+| **—** | `compact()` / `clear()` compaction | ✅ `0.4.0` |
+| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.4.0` |
+| **M4** | OPFS-backed persistence (survives reloads) | ✅ `0.4.0` |
+| **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.4.0` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.4.0` |
+| **M7** | Crash-safe storage — checksummed A/B snapshots, write-ahead log, kill-the-tab chaos suite | ✅ `0.4.0` |
 
-> Both registries are published at **`0.3.4`** — crates.io (Rust core) and npm (browser package).
+> Both registries are published at **`0.4.0`** — crates.io (Rust core) and npm (browser package).
 
 ## Design notes
 

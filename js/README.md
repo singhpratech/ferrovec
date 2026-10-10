@@ -17,8 +17,10 @@ share one consistent store** instead of silently diverging.
 You give it text. It embeds, indexes, searches, and *remembers* — off the main
 thread, across reloads, across tabs. Nothing leaves the device.
 
-**`0.3.4`** — the three-line browser API (embeddings + OPFS persistence), now
-**safe across multiple tabs** via single-writer leader election.
+**`0.4.0`** — the three-line browser API (embeddings + OPFS persistence),
+**safe across multiple tabs** via single-writer leader election, and now
+**crash-safe**: checksummed snapshots plus a write-ahead log, verified by a
+[published kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html).
 · [Website](https://singhpratech.github.io/ferrovec/) · [**▶ Live demo**](https://singhpratech.github.io/ferrovec/demo.html) · [GitHub](https://github.com/singhpratech/ferrovec) · [Rust core on crates.io](https://crates.io/crates/ferrovec)
 
 > **▶ [Try the live demo](https://singhpratech.github.io/ferrovec/demo.html)** — the real
@@ -211,7 +213,7 @@ Details: [crash-test results](https://singhpratech.github.io/ferrovec/chaos.html
 
 Opening the **same store name in two tabs** used to make the second tab silently
 degrade to a private in-memory copy — the two would diverge and the second tab's
-writes never reached disk. As of `0.3.4` ferrovec runs **single-writer leader
+writes never reached disk. As of `0.4.0` ferrovec runs **single-writer leader
 election** so multiple tabs safely share one persistent store:
 
 ```ts
@@ -311,11 +313,12 @@ The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 
 | | Milestone | Status |
 | --- | --- | --- |
-| **M1–M2** | Rust HNSW core + WASM boundary + SIMD | ✅ `0.3.4` |
-| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.3.4` |
-| **M4** | OPFS persistence (survives reloads) | ✅ `0.3.4` |
-| **M5** | Three-line browser API on npm | ✅ `0.3.4` |
-| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.3.4` |
+| **M1–M2** | Rust HNSW core + WASM boundary + SIMD | ✅ `0.4.0` |
+| **M3** | Web Worker + transformers.js auto-embedding | ✅ `0.4.0` |
+| **M4** | OPFS persistence (survives reloads) | ✅ `0.4.0` |
+| **M5** | Three-line browser API on npm | ✅ `0.4.0` |
+| **M6** | Cross-tab leader election (Web Locks) | ✅ `0.4.0` |
+| **M7** | Crash-safe storage — checksummed A/B snapshots, write-ahead log, chaos suite | ✅ `0.4.0` |
 
 The pure-Rust HNSW core is published separately on [crates.io](https://crates.io/crates/ferrovec).
 
