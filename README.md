@@ -35,16 +35,66 @@ In-browser vector search is a **crowded space** in 2026 — and this section is 
 
 ferrovec's wedge is exactly that missing half — **durability and consistency**:
 
-| | Engine | Index | Incremental | Persists in-browser | Cross-tab safe |
-| --- | --- | --- | --- | --- | --- |
-| **ferrovec** | Rust/WASM | **HNSW** | ✅ | ✅ **OPFS, built-in** | ✅ **leader election** |
-| altor-vec | Rust/WASM | HNSW | ✅ | ❌ | ❌ |
-| EdgeVec / VecLite / ruvector | Rust/WASM | HNSW | ✅ | ❌ in-memory | ❌ |
-| EntityDB | JS + WASM | brute-force | ✅ | ✅ IndexedDB | ❌ |
-| voy | Rust/WASM | kd-tree | ❌ rebuild | ❌ app-managed | ❌ |
-| Orama | TypeScript | brute-force | ✅ | ❌ serialize only | ❌ |
+| | Engine | Index | Incremental | Persists in-browser | Cross-tab safe | Checksummed, crash-safe file |
+| --- | --- | --- | --- | --- | --- | --- |
+| **ferrovec** | Rust/WASM | **HNSW** | ✅ | ✅ **OPFS, built-in** | ✅ **leader election** | ✅ |
+| altor-vec | Rust/WASM | HNSW | ✅ | ❌ | ❌ | ❌ |
+| EdgeVec / VecLite / ruvector | Rust/WASM | HNSW | ✅ | ❌ in-memory | ❌ | ❌ |
+| EntityDB | JS + WASM | brute-force | ✅ | ✅ IndexedDB | ❌ | ❌ |
+| voy | Rust/WASM | kd-tree | ❌ rebuild | ❌ app-managed | ❌ | ❌ |
+| Orama | TypeScript | brute-force | ✅ | ❌ serialize only | ❌ | ❌ |
 
 *Landscape as surveyed July 2026; this field moves fast, so treat other projects' rows as directional and check their latest.* If all you need is a fast in-memory ANN for a single page view, several of these are excellent and lighter than ferrovec. Reach for ferrovec when the index has to **outlive the page** and **stay correct across tabs** — a notes app, an offline PWA, or "chat with your docs" that shouldn't re-embed everything on every visit.
+
+## Durability guarantees
+
+Persisting is easy; persisting *safely* is the part that usually goes missing. This is what ferrovec's on-disk store (npm package, OPFS) does and does not promise.
+
+**Self-describing, checksummed snapshots.** Every persisted snapshot is a single FVS2 file:
+
+| Field | Size | Purpose |
+| --- | --- | --- |
+| magic `FVS2` + format version | 4 + 2 bytes | Reject files that are not snapshots, or are from an unknown format |
+| commit sequence | 8 bytes | Monotonic counter; the newest valid commit wins on open |
+| section lengths | 3 × 4 bytes | Must sum to the exact file length, so truncation and trailing garbage are caught |
+| CRC-32 | 4 bytes | Over the whole file; catches bit flips |
+| metadata (JSON) | variable | Embedding model id, dimensions, metric, live item count, writer, timestamp |
+| index + id→text sidecar | variable | The HNSW core bytes and the stored texts |
+
+A truncated, bit-flipped, or trailing-garbage file is detected on open and never decoded into a wrong index. The exact byte layout is documented at the top of [`js/src/snapshot.ts`](./js/src/snapshot.ts).
+
+**Two slots, so a crash can only hurt the write in flight.** Commits alternate between `slot-a.bin` and `slot-b.bin` inside the store's OPFS directory, always writing to the slot that does *not* hold the current commit. A crash mid-write can only damage the slot being written; the previous commit survives and is recovered on the next open. If every non-empty slot is unreadable, `open` throws `StoreCorruptError` instead of silently starting empty.
+
+**Errors you can act on.** Each has a stable `name`, preserved across the worker boundary, so `switch (err.name)` works:
+
+| Error | When | What to do |
+| --- | --- | --- |
+| `EmbeddingSpaceMismatchError` | The store was written with a different embedding model than the one you opened it with. Thrown before any model download; dimensions are re-checked once the embedder loads. | Open with the stored model, or `await Ferrovec.destroy(name)` to delete the store and start over. |
+| `StoreCorruptError` | Every non-empty snapshot slot failed validation. | Nothing is overwritten. `await Ferrovec.destroy(name)` and re-index, or restore from your own copy. |
+| `EmptyOverwriteRefusedError` | A commit would replace a non-empty on-disk index with an empty one, and no items were explicitly removed in this session (the signature of a failed load, not of intent). | The on-disk data is untouched. Investigate why the index came up empty; removing items explicitly in-session makes an empty index legitimate. |
+| `SnapshotCorruptError` | A single snapshot blob failed to decode (carries a `reason`). | Normally handled internally by falling back to the other slot; you see it only when decoding directly. |
+
+```ts
+try {
+  const db = await Ferrovec.open('notes', { model: 'Xenova/bge-small-en-v1.5' });
+} catch (err) {
+  if ((err as Error).name === 'EmbeddingSpaceMismatchError') {
+    await Ferrovec.destroy('notes'); // deletes the store; re-index afterwards
+  } else throw err;
+}
+```
+
+`Ferrovec.destroy(name)` permanently deletes a store's OPFS directory. Close every handle to it first, in this tab and others.
+
+**Persistent storage.** `Ferrovec.open` asks the browser for persistent storage (`navigator.storage.persist()`) so the origin's data is not evicted under storage pressure. The answer is exposed as `db.storagePersisted`. Firefox shows a permission prompt for this; pass `open(name, { requestPersistentStorage: false })` to opt out.
+
+**Upgrading from 0.3.x.** Existing stores (a single `index.bin`, FVS1) are read once and migrated to the slot format on the first commit; the old file is then deleted. Close every tab of your app before upgrading: a 0.3.x tab that becomes leader after a newer tab has migrated the store will write the old single-file format, which the new code ignores once slots exist.
+
+**What this does *not* promise:**
+
+- **Not power-loss durability.** OPFS `flush()` guarantees content consistency, not `fsync`. The guarantee is "survives a tab kill, crash, or reload", not "survives power loss or an OS crash". Keep a server-side copy of anything irreplaceable.
+- **The browser can still delete your data.** Safari removes all script-writable storage for an origin after 7 days of Safari use without interacting with the site, unless the app is installed to the Home Screen. `persist()` grants are heuristic and differ per browser.
+- **No benchmark or crash-test results yet.** The behaviour above is covered by unit tests against an in-memory fake file system; a published chaos/crash-injection suite is the next phase, and no crash-safety numbers are claimed here.
 
 ---
 

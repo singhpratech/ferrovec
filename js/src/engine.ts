@@ -5,9 +5,16 @@
  * text-in API into embed → index operations. It has no Worker/DOM coupling, so
  * it runs unchanged under Node with injected fakes and will be reused by M4
  * (persistence) behind the same seam.
+ *
+ * The engine knows which embedding space its vectors live in
+ * ({@link Engine.embeddingSpace}: model id, dims, metric) and stamps it into
+ * every snapshot it produces, so a persisted store can later refuse to be
+ * reopened with a different model. Dimensionality is verified here, against an
+ * injected (rehydrated) core, because it is only known once the embedder loads.
  */
 
-import { encodeSnapshot } from './snapshot.ts';
+import { EmbeddingSpaceMismatchError } from './errors.ts';
+import { SNAPSHOT_WRITER, type EmbeddingSpace, type SnapshotSource } from './snapshot.ts';
 import type { Embedder, EngineCreateOptions, Persister, QueryResult, VectorCore } from './types.ts';
 
 /** A {@link Persister} that does nothing — the default (pure in-memory) sink. */
@@ -23,6 +30,7 @@ export class Engine {
   readonly #persister: Persister;
   /** id → original text, so queries can echo the stored source text back. */
   readonly #texts: Map<string, string>;
+  readonly #embeddingSpace: EmbeddingSpace;
   #autoId = 0;
 
   private constructor(
@@ -30,7 +38,9 @@ export class Engine {
     core: VectorCore,
     persister: Persister,
     texts: Map<string, string>,
+    embeddingSpace: EmbeddingSpace,
   ) {
+    this.#embeddingSpace = embeddingSpace;
     this.#embedder = embedder;
     this.#core = core;
     this.#persister = persister;
@@ -56,13 +66,38 @@ export class Engine {
       dims = (await embedder.embed('warmup')).length;
     }
 
+    const embeddingSpace: EmbeddingSpace = {
+      model: embedder.id ?? options.model ?? '<unknown>',
+      dims,
+      metric: 'cosine',
+    };
+
+    // A rehydrated core must live in the same space as the embedder: vectors of
+    // a different width cannot be compared (and the core would reject them).
+    if (options.core && options.core.dims() !== dims) {
+      throw new EmbeddingSpaceMismatchError(
+        {
+          model: options.initialMeta?.embeddingSpace.model ?? 'unknown',
+          dims: options.core.dims(),
+          metric: 'cosine',
+        },
+        embeddingSpace,
+      );
+    }
+
     const core = options.core ?? (await Engine.#defaultCore(dims));
     return new Engine(
       embedder,
       core,
       options.persister ?? NO_PERSIST,
       options.initialTexts ?? new Map<string, string>(),
+      embeddingSpace,
     );
+  }
+
+  /** The embedding model, dimensionality, and metric this engine's vectors live in. */
+  get embeddingSpace(): EmbeddingSpace {
+    return { ...this.#embeddingSpace };
   }
 
   static async #defaultEmbedder(options: EngineCreateOptions): Promise<Embedder> {
@@ -85,7 +120,7 @@ export class Engine {
     const vector = await this.#embedder.embed(text);
     this.#core.insert(key, vector);
     this.#texts.set(key, text);
-    this.#persister.markDirty();
+    this.#persister.markDirty('insert');
     return key;
   }
 
@@ -104,7 +139,7 @@ export class Engine {
   remove(id: string): boolean {
     this.#texts.delete(id);
     const removed = this.#core.remove(id);
-    if (removed) this.#persister.markDirty();
+    if (removed) this.#persister.markDirty('remove');
     return removed;
   }
 
@@ -114,12 +149,23 @@ export class Engine {
   }
 
   /**
-   * Serialize the full index — vectors plus the id→text sidecar — into a single
-   * snapshot blob. This is the source the injected {@link Persister} writes to
-   * disk; the worker binds it into the OPFS store after construction.
+   * Produce the full snapshot contents — serialized vectors, the id→text
+   * sidecar, and the self-describing meta (embedding space, live count). The
+   * persistence store binds this as its source and frames it (with its own
+   * commit sequence) into the on-disk FVS2 blob. `texts` is the live map, so
+   * the caller must encode it synchronously.
    */
-  snapshot(): Uint8Array {
-    return encodeSnapshot(this.#core.toBytes(), this.#texts);
+  snapshot(): SnapshotSource {
+    return {
+      core: this.#core.toBytes(),
+      texts: this.#texts,
+      meta: {
+        embeddingSpace: { ...this.#embeddingSpace },
+        count: this.#core.len(),
+        writer: SNAPSHOT_WRITER,
+        createdAt: Date.now(),
+      },
+    };
   }
 
   /** Force any pending persistence write to complete now. */

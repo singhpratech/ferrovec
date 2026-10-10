@@ -17,6 +17,15 @@ export { createCore, createCoreFromBytes } from './core-loader.ts';
 
 export type { Role } from './coordinator.ts';
 
+export {
+  SnapshotCorruptError,
+  EmbeddingSpaceMismatchError,
+  StoreCorruptError,
+  EmptyOverwriteRefusedError,
+} from './errors.ts';
+export type { SnapshotCorruptReason } from './errors.ts';
+export type { EmbeddingSpace, SnapshotMeta, SnapshotSource } from './snapshot.ts';
+
 export type {
   Embedder,
   VectorCore,

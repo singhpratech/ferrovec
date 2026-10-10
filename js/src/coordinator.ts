@@ -1,8 +1,8 @@
 /**
  * Cross-tab / cross-worker coordination for a single persistent store (M6).
  *
- * Today's OPFS persistence (M4) is backed by a `FileSystemSyncAccessHandle`,
- * which holds an **exclusive lock** on `index.bin`. If a second tab opens the
+ * OPFS persistence is backed by `FileSystemSyncAccessHandle`s, which hold an
+ * **exclusive lock** on the store's slot files (`slot-a.bin` / `slot-b.bin`). If a second tab opens the
  * same store the handle throws and that tab silently degrades to in-memory — so
  * two tabs on one store diverge. M6 fixes this with **single-writer leader
  * election** so any number of tabs safely share one persistent store.
@@ -25,15 +25,21 @@
  *   request/response messages and return the leader's answers.
  * - **Failover.** When the leader tab closes or crashes, its Web Lock releases;
  *   a waiting follower's queued `locks.request` callback runs and it *promotes*:
- *   it opens the OPFS store (rehydrating from `index.bin`) and becomes the new
+ *   it opens the OPFS store (rehydrating from the newest valid slot) and becomes the new
  *   leader. In-flight follower requests are retried and transparently answered
  *   by the new leader. Because the promoting tab **holds the exclusive lock**, it
- *   is the legitimate owner of `index.bin`: OPFS contention there does **not**
+ *   is the legitimate owner of the slot files: OPFS contention there does **not**
  *   degrade to an empty in-memory store (which would serve `size()===0` over an
  *   intact on-disk index and discard writes) — it retries on a long deadline and,
- *   if the handle truly never frees or `index.bin` is corrupt, the promotion
- *   **fails loudly** and the tab **re-queues** for the lock rather than silently
- *   dropping out of the election (which would leave zero leaders forever).
+ *   if the handles truly never free, the promotion **fails loudly** and the
+ *   tab **re-queues** for the lock rather than silently dropping out of the
+ *   election (which would leave zero leaders forever). A *permanent* failure —
+ *   the store is corrupt (`StoreCorruptError`) or was written with a different
+ *   model than this tab embeds with (`EmbeddingSpaceMismatchError`) — would
+ *   fail identically on every retry, so instead the tab **stops contending**:
+ *   it releases the lock to the next contender (e.g. a tab opened with the right
+ *   model) and every follower op on it rejects immediately with that typed
+ *   error rather than timing out.
  * - **Never crash, always degrade.** If `navigator.locks` or
  *   {@link BroadcastChannel} is unavailable (older browser, insecure context,
  *   Node) we fall back to today's single-tab behavior: `role: 'solo'` — this
@@ -66,10 +72,19 @@
  * promotion, and a follower op rejects after `opTimeoutMs` of only-timeouts.
  * Defaults are generous (30s) so normal slow paths — a leader still loading its
  * model, a slow first embed — are unaffected.
+ *
+ * ### Embedding-space check
+ *
+ * A persisted snapshot records the model its vectors came from. The leader
+ * compares that against {@link CoordinatorOptions.expectedModel} right after
+ * opening the store and **before** building the engine, so a mismatch fails
+ * fast (no model download) with an `EmbeddingSpaceMismatchError`, and the store
+ * is closed without ever having been written to.
  */
 
 import { openStore, type PersistentStore } from './persistence.ts';
-import { decodeSnapshot } from './snapshot.ts';
+import { EmbeddingSpaceMismatchError } from './errors.ts';
+import type { SnapshotMeta } from './snapshot.ts';
 import { createCoreFromBytes } from './core-loader.ts';
 import type { Engine } from './engine.ts';
 import type { QueryResult, VectorCore } from './types.ts';
@@ -79,10 +94,12 @@ export type Role = 'leader' | 'follower' | 'solo';
 
 /** State the leader hands a freshly-built {@link Engine}. */
 export interface LeaderInit {
-  /** Rehydrated core, when `index.bin` held a prior snapshot. */
+  /** Rehydrated core, when the store held a prior snapshot. */
   core?: VectorCore;
   /** Rehydrated id→text sidecar, paired with {@link core}. */
   initialTexts?: Map<string, string>;
+  /** Self-description of the rehydrated snapshot (`null` for legacy/none). */
+  initialMeta?: SnapshotMeta | null;
   /** The OPFS-backed (or in-memory) store the engine must persist into. */
   persister: PersistentStore;
 }
@@ -105,6 +122,13 @@ export interface CoordinatorOptions {
   debounceMs?: number;
   /** How the leader materializes its engine. */
   makeEngine: EngineFactory;
+  /**
+   * The embedding model this session will embed with. When the persisted
+   * snapshot names a different model, leader open fails with
+   * `EmbeddingSpaceMismatchError` before {@link makeEngine} runs. Omit to skip
+   * the check.
+   */
+  expectedModel?: string;
   /** Follower request timeout before a retry, in ms. Defaults to `500`. */
   requestTimeoutMs?: number;
   /**
@@ -144,6 +168,8 @@ interface ResMessage {
   ok: boolean;
   value?: unknown;
   error?: string;
+  /** The leader-side error's `name`, so a typed error survives the channel. */
+  errorName?: string;
   persistent?: boolean;
 }
 interface HelloMessage {
@@ -169,13 +195,27 @@ const TIMEOUT = Symbol('timeout');
 const CONTENTION_RETRIES = 12;
 
 /**
- * After a promotion attempt fails for a non-abort reason (e.g. a corrupt
- * `index.bin`, or the OPFS handle never freed), how long to wait before
- * re-queuing for the lock. A small backoff keeps a persistently-failing
+ * After a promotion attempt fails for a transient reason (e.g. the OPFS handles
+ * never freed, or the engine build threw), how long to wait before re-queuing
+ * for the lock. (Permanent failures — see {@link isPermanentPromotionError} —
+ * are not retried at all.) A small backoff keeps a persistently-failing
  * promotion from hot-looping the Web Lock while still letting another queued tab
  * take a turn.
  */
 const PROMOTION_RETRY_DELAY_MS = 200;
+
+/**
+ * Promotion failures that would recur identically on every retry: the on-disk
+ * store is corrupt, or it holds vectors from a different embedding model than
+ * this tab embeds with. Retrying them would hot-loop the Web Lock forever and
+ * starve a tab that *could* lead (e.g. one opened with the right model).
+ */
+function isPermanentPromotionError(err: unknown): err is Error {
+  return (
+    err instanceof Error &&
+    (err.name === 'EmbeddingSpaceMismatchError' || err.name === 'StoreCorruptError')
+  );
+}
 
 /** Default bound for the follower join handshake, in ms. See {@link CoordinatorOptions.openTimeoutMs}. */
 const DEFAULT_OPEN_TIMEOUT_MS = 30_000;
@@ -221,6 +261,7 @@ export class Coordinator {
   readonly #persist: boolean;
   readonly #debounceMs: number;
   readonly #makeEngine: EngineFactory;
+  readonly #expectedModel: string | undefined;
   readonly #requestTimeoutMs: number;
   readonly #openTimeoutMs: number;
   readonly #opTimeoutMs: number;
@@ -260,12 +301,17 @@ export class Coordinator {
   // timing-out `open()`), and the pending re-queue backoff timer.
   #lastPromotionError: Error | null = null;
   #promotionRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Set once a promotion failed permanently (corrupt store / model mismatch):
+  // this tab no longer contends for leadership and every follower op rejects
+  // immediately with #lastPromotionError.
+  #promotionPermanentlyFailed = false;
 
   private constructor(options: CoordinatorOptions) {
     this.#name = options.name;
     this.#persist = options.persist ?? true;
     this.#debounceMs = options.debounceMs ?? 250;
     this.#makeEngine = options.makeEngine;
+    this.#expectedModel = options.expectedModel;
     this.#requestTimeoutMs = options.requestTimeoutMs ?? 500;
     this.#openTimeoutMs = options.openTimeoutMs ?? DEFAULT_OPEN_TIMEOUT_MS;
     this.#opTimeoutMs = options.opTimeoutMs ?? DEFAULT_OP_TIMEOUT_MS;
@@ -329,18 +375,29 @@ export class Coordinator {
     for (const resolve of this.#pending.values()) resolve(TIMEOUT);
     this.#pending.clear();
 
-    if (this.#role === 'follower') {
-      // Stop waiting to be promoted, then tear down the channel.
-      this.#promotionAbort?.abort();
-    } else {
-      // Leader/solo: flush + release the OPFS handle FIRST, then the Web Lock —
-      // so a promoting follower opens `index.bin` only after we let go of it.
-      if (this.#engine) await this.#engine.close();
-      this.#releaseLock?.();
-      this.#releaseLock = null;
+    const leading = this.#role !== 'follower';
+    try {
+      if (!leading) {
+        // Stop waiting to be promoted, then tear down the channel.
+        this.#promotionAbort?.abort();
+      } else if (this.#engine) {
+        // Leader/solo: flush + release the OPFS handles FIRST, then the Web
+        // Lock — so a promoting follower opens the slots only after we let go
+        // of them. The final commit can throw (a failed write, or
+        // EmptyOverwriteRefusedError); the store still releases its handles.
+        await this.#engine.close();
+      }
+    } finally {
+      // Always release the Web Lock and the channel, even when the final commit
+      // threw — otherwise every other tab waits on a lock nobody will release.
+      // The engine's error (if any) propagates after this block.
+      if (leading) {
+        this.#releaseLock?.();
+        this.#releaseLock = null;
+      }
+      this.#channel?.close();
+      this.#channel = null;
     }
-    this.#channel?.close();
-    this.#channel = null;
   }
 
   // ---- startup / election -------------------------------------------------
@@ -348,7 +405,7 @@ export class Coordinator {
   async #start(): Promise<void> {
     if (!coordinationAvailable()) {
       // No Web Locks / BroadcastChannel: behave exactly as pre-M6 — a single
-      // attempt at the OPFS handle, prompt in-memory fallback on contention.
+      // attempt at the OPFS handles, prompt in-memory fallback on contention.
       this.#role = 'solo';
       await this.#becomeLeaderCore(0);
       return;
@@ -361,7 +418,7 @@ export class Coordinator {
 
     const acquired = await this.#tryAcquire();
     if (acquired) {
-      // We hold the Web Lock, so we are the legitimate owner of index.bin:
+      // We hold the Web Lock, so we are the legitimate owner of the slots:
       // contention must not degrade us to memory (requireLock). Build the engine
       // FIRST and flip to 'leader' only once it exists — until then role stays
       // 'solo', so hello/req from a racing follower go unanswered (and are
@@ -435,14 +492,22 @@ export class Coordinator {
         try {
           await this.#becomeLeaderCore(CONTENTION_RETRIES, true);
         } catch (err) {
-          // A genuine promotion failure (corrupt index.bin, or the handle never
-          // freed) — NOT the close-time AbortError, which rejects the request
-          // before this callback ever runs. Returning here releases the lock;
-          // if we simply dropped out of the queue there would be zero leaders
-          // forever. So re-queue (after a small backoff) and let this attempt
-          // release the lock for the next contender.
-          // (#becomeLeaderCore already closed any store it opened.)
-          if (!this.#closed) this.#requeueAfterFailedPromotion(err);
+          // A genuine promotion failure — NOT the close-time AbortError, which
+          // rejects the request before this callback ever runs. Returning here
+          // releases the lock. (#becomeLeaderCore already closed any store it
+          // opened.)
+          if (this.#closed) return;
+          if (isPermanentPromotionError(err)) {
+            // Corrupt store / model mismatch: every retry would fail the same
+            // way, so stop contending and let a tab that can lead take over.
+            this.#failPromotionPermanently(err);
+            return;
+          }
+          // Transient (e.g. the handles never freed): if we simply dropped out
+          // of the queue there could be zero leaders forever. So re-queue
+          // (after a small backoff) and let this attempt release the lock for
+          // the next contender.
+          this.#requeueAfterFailedPromotion(err);
           return;
         }
         if (this.#closed) {
@@ -482,6 +547,35 @@ export class Coordinator {
   }
 
   /**
+   * Record a permanent promotion failure and stop contending for leadership.
+   * The caller returns from the lock callback right after, releasing the lock
+   * to the next contender. Every follower op — including ones already waiting
+   * on a response — now rejects immediately with a copy of `err`.
+   */
+  #failPromotionPermanently(err: Error): void {
+    this.#lastPromotionError = err;
+    this.#promotionPermanentlyFailed = true;
+    console.error(
+      `[ferrovec] this tab has stopped contending for leadership of "${this.#name}" ` +
+        `because promoting it can never succeed (${err.name}); its operations will ` +
+        `fail with that error until it is reopened:`,
+      err,
+    );
+    // Wake ops blocked in #sendOnce so they observe the flag now rather than
+    // after their request timeout.
+    for (const resolve of this.#pending.values()) resolve(TIMEOUT);
+    this.#pending.clear();
+  }
+
+  /** A fresh copy (message + name) of the permanent promotion error, to reject an op with. */
+  #permanentPromotionError(): Error {
+    const cause = this.#lastPromotionError;
+    const error = new Error(cause?.message ?? 'ferrovec: promotion to leader failed permanently');
+    error.name = cause?.name ?? 'Error';
+    return error;
+  }
+
+  /**
    * Open the OPFS store, rehydrate if present, build + bind the engine. When
    * `requireLock` is set the caller holds the leader Web Lock, so OPFS contention
    * must not degrade to in-memory (see {@link openStore}). On any failure after
@@ -497,17 +591,32 @@ export class Coordinator {
     });
 
     try {
-      let core: VectorCore | undefined;
-      let initialTexts: Map<string, string> | undefined;
-      if (store.initialBytes && store.initialBytes.length > 0) {
-        const decoded = decodeSnapshot(store.initialBytes);
-        if (decoded.core.length > 0) {
-          core = await createCoreFromBytes(decoded.core);
-          initialTexts = decoded.texts;
-        }
+      const snap = store.initialSnapshot;
+      const storedSpace = snap?.meta?.embeddingSpace;
+      if (storedSpace && this.#expectedModel !== undefined && storedSpace.model !== this.#expectedModel) {
+        // Fail fast, before makeEngine downloads a model. bind() has not run, so
+        // the store has no snapshot producer and the store.close() in the catch
+        // below cannot write: the mismatched store is left byte-for-byte intact.
+        throw new EmbeddingSpaceMismatchError(storedSpace, {
+          model: this.#expectedModel,
+          dims: 0, // unknown until the embedder loads; Engine.create checks dims
+          metric: 'cosine',
+        });
       }
 
-      const engine = await this.#makeEngine({ core, initialTexts, persister: store });
+      let core: VectorCore | undefined;
+      let initialTexts: Map<string, string> | undefined;
+      if (snap && snap.core.length > 0) {
+        core = await createCoreFromBytes(snap.core);
+        initialTexts = snap.texts;
+      }
+
+      const engine = await this.#makeEngine({
+        core,
+        initialTexts,
+        initialMeta: snap?.meta ?? null,
+        persister: store,
+      });
       store.bind(() => engine.snapshot());
       this.#engine = engine;
       this.#persistent = store.persistent;
@@ -609,11 +718,16 @@ export class Coordinator {
     const deadline = Date.now() + this.#opTimeoutMs;
     for (;;) {
       if (this.#closed) throw new Error('store is closed');
+      // This tab can never lead (corrupt store / model mismatch): fail fast
+      // with the typed error instead of timing out against an absent leader.
+      if (this.#promotionPermanentlyFailed) throw this.#permanentPromotionError();
       // Promoted while waiting (or between retries): serve it ourselves.
       if (this.#role !== 'follower') return this.#localOp(op, args);
 
       const outcome = await this.#sendOnce(reqId, op, args);
       if (outcome === TIMEOUT) {
+        // Woken by a permanent promotion failure: report it, not a timeout.
+        if (this.#promotionPermanentlyFailed) throw this.#permanentPromotionError();
         // No leader answered in time. Retry until the op budget is exhausted,
         // then reject rather than spinning forever against a frozen/absent
         // leader. (A slow-but-live leader replies before the budget via the
@@ -630,7 +744,11 @@ export class Coordinator {
       }
       if (outcome.persistent !== undefined) this.#persistent = outcome.persistent;
       if (outcome.ok) return outcome.value;
-      throw new Error(outcome.error ?? 'leader error');
+      // Restore the leader-side error's name (e.g. 'EmptyOverwriteRefusedError')
+      // so callers can switch on err.name, as on the leader itself.
+      const error = new Error(outcome.error ?? 'leader error');
+      if (outcome.errorName) error.name = outcome.errorName;
+      throw error;
     }
   }
 
@@ -731,6 +849,7 @@ export class Coordinator {
           reqId: msg.reqId,
           ok: false,
           error: err instanceof Error ? err.message : String(err),
+          errorName: err instanceof Error ? err.name : undefined,
           persistent: this.#persistent,
         };
       }

@@ -31,6 +31,17 @@ export interface FerrovecOptions {
    * {@link Ferrovec.persistent} for the resolved mode.
    */
   persist?: boolean;
+  /**
+   * Ask the browser to make this origin's storage persistent
+   * (`navigator.storage.persist()`) so OPFS data is not evicted under storage
+   * pressure. Defaults to `true`.
+   *
+   * Firefox shows the user a permission prompt for `persist()`, which is why an
+   * app may want to opt out (or call `navigator.storage.persist()` itself at a
+   * moment of its choosing). When `false`, the call is skipped entirely and
+   * {@link Ferrovec.storagePersisted} stays `false`.
+   */
+  requestPersistentStorage?: boolean;
 }
 
 /** Options for {@link Ferrovec.insert}. */
@@ -52,6 +63,7 @@ export class Ferrovec {
   readonly #pending = new Map<number, Pending>();
   #nextId = 0;
   #persistent = false;
+  #storagePersisted = false;
   #role: Role = 'solo';
 
   private constructor(worker: Worker) {
@@ -71,7 +83,11 @@ export class Ferrovec {
       if (response.ok) {
         pending.resolve(response.result);
       } else {
-        pending.reject(new Error(response.error));
+        // Restore the typed error's name (e.g. 'EmbeddingSpaceMismatchError',
+        // 'StoreCorruptError') so callers can switch on err.name.
+        const error = new Error(response.error);
+        if (response.errorName) error.name = response.errorName;
+        pending.reject(error);
       }
     };
     this.#worker.onerror = (event: ErrorEvent): void => {
@@ -81,13 +97,47 @@ export class Ferrovec {
     };
   }
 
-  /** Spawn the worker, open an index named `name`, and await readiness. */
-  static async open(name: string, options: FerrovecOptions = {}): Promise<Ferrovec> {
+  /** Spawn a store worker (see {@link Ferrovec.open} for why this URL form). */
+  static #spawnWorker(): Worker {
     // References the *built* sibling `worker.js`, so this resolves correctly from
     // `dist/` and is statically analyzable by bundlers (Vite/webpack) that
     // rewrite `new Worker(new URL('./worker.js', import.meta.url))`.
-    const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+    return new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+  }
+
+  /**
+   * Spawn the worker, open an index named `name`, and await readiness.
+   *
+   * Rejects with an `Error` whose `name` is `'EmbeddingSpaceMismatchError'` when
+   * the store was written with a different model (open it with the stored
+   * model, or {@link Ferrovec.destroy} it), or `'StoreCorruptError'` when no
+   * persisted snapshot slot is readable.
+   *
+   * Also asks the browser to make this origin's storage persistent
+   * (`navigator.storage.persist()`, main-thread only) so OPFS data is not
+   * evicted under storage pressure, unless
+   * {@link FerrovecOptions.requestPersistentStorage} is `false`; see
+   * {@link Ferrovec.storagePersisted}.
+   */
+  static async open(name: string, options: FerrovecOptions = {}): Promise<Ferrovec> {
+    const worker = Ferrovec.#spawnWorker();
     const client = new Ferrovec(worker);
+    // Best-effort and non-blocking: some browsers resolve persist() only after
+    // the user answers a permission prompt, which must never stall open().
+    if (options.requestPersistentStorage ?? true) {
+      try {
+        void navigator.storage
+          ?.persist?.()
+          .then((granted) => {
+            client.#storagePersisted = granted === true;
+          })
+          .catch(() => {
+            /* unsupported / denied → stays false */
+          });
+      } catch {
+        /* navigator.storage unavailable → stays false */
+      }
+    }
     const result = await client.#send<OpenResult>({
       type: 'open',
       name,
@@ -103,6 +153,35 @@ export class Ferrovec {
   /** Whether this index persists to disk (OPFS) or is running in-memory only. */
   get persistent(): boolean {
     return this.#persistent;
+  }
+
+  /**
+   * Whether the browser granted persistent storage for this origin
+   * (`navigator.storage.persist()`), i.e. OPFS data will not be evicted under
+   * storage pressure. `false` when unsupported, denied, not yet answered, or
+   * not requested ({@link FerrovecOptions.requestPersistentStorage} `false`);
+   * the request is made by {@link Ferrovec.open} and this updates when it
+   * resolves (usually before `open()` itself resolves).
+   */
+  get storagePersisted(): boolean {
+    return this.#storagePersisted;
+  }
+
+  /**
+   * Permanently delete the persisted store `name` (its whole OPFS directory).
+   * Close every open handle to it first — in this tab and others — or the
+   * browser refuses the removal and this rejects. Resolves (no-op) when the
+   * store does not exist or OPFS is unavailable. This is the escape hatch for an
+   * `EmbeddingSpaceMismatchError` or a `StoreCorruptError`.
+   */
+  static async destroy(name: string): Promise<void> {
+    const worker = Ferrovec.#spawnWorker();
+    const client = new Ferrovec(worker);
+    try {
+      await client.#send({ type: 'destroy', name });
+    } finally {
+      worker.terminate();
+    }
   }
 
   /**

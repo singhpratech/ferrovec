@@ -8,19 +8,30 @@
  * exercise the *real* coordination/persistence code path (coordinator.ts,
  * persistence.ts, snapshot.ts, engine.ts, the wasm core's `toBytes`/`fromBytes`)
  * without downloading model weights. Driven over postMessage by the tests in
- * `opfs.test.ts` / `coord.test.ts` running in Chromium.
+ * `opfs.test.ts` / `coord.test.ts` / `durability.test.ts` running in Chromium.
+ *
+ * Durability test hooks (only legal while no store is open in this worker):
+ * `corrupt` truncates one slot file in place (a simulated torn write), `slots`
+ * reports each slot's size and decoded sequence, and `destroy` mirrors the
+ * production worker's store deletion.
  */
 
 import { Coordinator } from '../../src/coordinator.ts';
 import { Engine } from '../../src/engine.ts';
+import { destroyStore, sanitizeName } from '../../src/persistence.ts';
+import { decodeSnapshot } from '../../src/snapshot.ts';
 import type { Embedder } from '../../src/types.ts';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 const DIMS = 32;
 
+/** The fake embedder's model id unless an `open` request names another. */
+const FAKE_MODEL = 'fake-fnv1a-32';
+
 /** Deterministic FNV-1a bag-of-tokens embedder (identical text → identical vec). */
-function fakeEmbedder(slowEmbedMs = 0): Embedder {
+function fakeEmbedder(slowEmbedMs = 0, id = FAKE_MODEL): Embedder {
   return {
+    id,
     dims: DIMS,
     async embed(text: string): Promise<Float32Array> {
       // Simulate a slow (e.g. wasm-warmup) embed so a follower's request times
@@ -60,6 +71,14 @@ interface Req {
   text?: string;
   docId?: string;
   k?: number;
+  /** Model id reported by the fake embedder (and expected of the store). */
+  model?: string;
+  /** Snapshot debounce window, in ms. Defaults to `50`. */
+  debounceMs?: number;
+  /** `corrupt`: which slot file to truncate. */
+  slot?: 'a' | 'b';
+  /** `corrupt`: new length of the slot file. */
+  truncateTo?: number;
   // ---- fault-injection knobs (used by coord-defects.test.ts) ----
   /** Make the next N `makeEngine` calls throw (tests leader-init/promotion failure). */
   failEngineTimes?: number;
@@ -71,6 +90,12 @@ interface Req {
   openTimeoutMs?: number;
   /** Follower per-op bound, in ms. */
   opTimeoutMs?: number;
+  /**
+   * Make the leader's snapshot producer report `count: 0` regardless of the
+   * index's contents: over a non-empty on-disk store with no removes, the next
+   * commit (e.g. the final one in close) trips the empty-overwrite guard.
+   */
+  emptySnapshot?: boolean;
 }
 
 // Module-level so it survives across a failover *promotion* (a follower builds
@@ -82,11 +107,12 @@ async function open(req: Req): Promise<{ persistent: boolean; role: string }> {
   const coordinator = await Coordinator.open({
     name: req.name ?? 'test',
     persist: req.persist,
-    debounceMs: 50,
+    debounceMs: req.debounceMs ?? 50,
+    expectedModel: req.model ?? FAKE_MODEL,
     requestTimeoutMs: 250,
     openTimeoutMs: req.openTimeoutMs,
     opTimeoutMs: req.opTimeoutMs,
-    makeEngine: async ({ core, initialTexts, persister }) => {
+    makeEngine: async ({ core, initialTexts, initialMeta, persister }) => {
       if (req.slowEngineMs && req.slowEngineMs > 0) {
         await new Promise((r) => setTimeout(r, req.slowEngineMs));
       }
@@ -94,11 +120,76 @@ async function open(req: Req): Promise<{ persistent: boolean; role: string }> {
         failEngineRemaining--;
         throw new Error('injected engine build failure');
       }
-      return Engine.create({ embedder: fakeEmbedder(req.slowEmbedMs), core, initialTexts, persister });
+      const engine = await Engine.create({
+        embedder: fakeEmbedder(req.slowEmbedMs, req.model ?? FAKE_MODEL),
+        core,
+        initialTexts,
+        initialMeta,
+        persister,
+      });
+      if (req.emptySnapshot) {
+        const real = engine.snapshot.bind(engine);
+        engine.snapshot = () => {
+          const snap = real();
+          return { ...snap, meta: { ...snap.meta, count: 0 } };
+        };
+      }
+      return engine;
     },
   });
   store = coordinator;
   return { persistent: coordinator.persistent, role: coordinator.role };
+}
+
+/** The store's OPFS directory (must already exist). */
+async function storeDir(name: string): Promise<FileSystemDirectoryHandle> {
+  const root = await navigator.storage.getDirectory();
+  const base = await root.getDirectoryHandle('ferrovec');
+  return base.getDirectoryHandle(sanitizeName(name));
+}
+
+interface SyncHandle {
+  truncate(n: number): void;
+  flush(): void;
+  close(): void;
+}
+
+/** Test hook: truncate a slot file in place, simulating a torn write. */
+async function corrupt(req: Req): Promise<{ corrupted: true }> {
+  if (store) throw new Error('corrupt is only legal with no store open in this worker');
+  const dir = await storeDir(req.name ?? 'test');
+  const file = await dir.getFileHandle(`slot-${req.slot ?? 'a'}.bin`);
+  const handle = await (
+    file as unknown as { createSyncAccessHandle(): Promise<SyncHandle> }
+  ).createSyncAccessHandle();
+  try {
+    handle.truncate(req.truncateTo ?? 0);
+    handle.flush();
+  } finally {
+    handle.close();
+  }
+  return { corrupted: true };
+}
+
+/** Test hook: each slot's size and decoded sequence (`null` if undecodable). */
+async function slots(req: Req): Promise<Record<string, { size: number; sequence: number | null; count: number | null }>> {
+  if (store) throw new Error('slots is only legal with no store open in this worker');
+  const dir = await storeDir(req.name ?? 'test');
+  const out: Record<string, { size: number; sequence: number | null; count: number | null }> = {};
+  for (const slot of ['a', 'b']) {
+    const bytes = new Uint8Array(await (await (await dir.getFileHandle(`slot-${slot}.bin`)).getFile()).arrayBuffer());
+    let sequence: number | null = null;
+    let count: number | null = null;
+    try {
+      const decoded = decodeSnapshot(bytes);
+      sequence = Number(decoded.sequence);
+      count = decoded.meta?.count ?? null;
+    } catch {
+      /* torn / empty */
+    }
+    out[slot] = { size: bytes.length, sequence, count };
+  }
+  return out;
 }
 
 async function handle(req: Req): Promise<unknown> {
@@ -122,6 +213,14 @@ async function handle(req: Req): Promise<unknown> {
       if (cur) await cur.close();
       return { closed: true };
     }
+    case 'corrupt':
+      return corrupt(req);
+    case 'slots':
+      return slots(req);
+    case 'destroy':
+      if (store) throw new Error('cannot destroy a store while one is open in this worker');
+      await destroyStore(req.name ?? 'test');
+      return { destroyed: true };
     default:
       throw new Error(`unknown ${req.type}`);
   }
@@ -132,6 +231,11 @@ ctx.onmessage = (event: MessageEvent<Req>): void => {
   handle(req).then(
     (result) => ctx.postMessage({ id: req.id, ok: true, result }),
     (err: unknown) =>
-      ctx.postMessage({ id: req.id, ok: false, error: err instanceof Error ? err.message : String(err) }),
+      ctx.postMessage({
+        id: req.id,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        errorName: err instanceof Error ? err.name : undefined,
+      }),
   );
 };

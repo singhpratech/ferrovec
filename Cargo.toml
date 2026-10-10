@@ -11,7 +11,7 @@ keywords = ["hnsw", "vector-search", "embeddings", "ann", "wasm"]
 categories = ["algorithms", "data-structures", "wasm"]
 # Keep the published crate lean — the JS package, site, and build outputs
 # are not part of the Rust crate.
-exclude = ["js/", "docs/", "pkg/", "PUBLISHING.md", ".github/", "*.html"]
+exclude = ["js/", "docs/", "pkg/", "private/", "PUBLISHING.md", ".github/", "*.html"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

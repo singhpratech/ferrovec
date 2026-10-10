@@ -5,6 +5,8 @@
  * {@link Engine} testable in plain Node with injected fakes.
  */
 
+import type { SnapshotMeta } from './snapshot.ts';
+
 /**
  * Turns text into a dense vector. The default implementation wraps
  * transformers.js, but tests inject a deterministic fake and M4 can reuse the
@@ -19,6 +21,12 @@ export interface Embedder {
    * creation so this is populated immediately.
    */
   readonly dims: number;
+  /**
+   * The model id (e.g. `Xenova/all-MiniLM-L6-v2`). Recorded in every persisted
+   * snapshot so a store reopened with a different model fails fast with an
+   * `EmbeddingSpaceMismatchError` instead of returning wrong neighbours.
+   */
+  readonly id?: string;
 }
 
 /**
@@ -48,8 +56,13 @@ export interface VectorCore {
  * write, and {@link close} for a final flush + resource release.
  */
 export interface Persister {
-  /** Note that the index changed; implementations debounce an actual write. */
-  markDirty(): void;
+  /**
+   * Note that the index changed; implementations debounce an actual write.
+   * `kind` tells the store whether the change could legitimately shrink the
+   * index (`'remove'`), which the empty-overwrite guard needs to know. No-op
+   * persisters ignore it.
+   */
+  markDirty(kind?: 'insert' | 'remove'): void;
   /** Force any pending snapshot to be persisted now. */
   flush(): Promise<void>;
   /** Final flush and release of the underlying handle/lock. */
@@ -106,4 +119,10 @@ export interface EngineCreateOptions {
    * echo stored text back immediately after a reload.
    */
   initialTexts?: Map<string, string>;
+  /**
+   * The self-description of the persisted snapshot an injected {@link core} was
+   * rehydrated from, if any. Used only to name the stored model when the core's
+   * dimensionality does not match the embedder's.
+   */
+  initialMeta?: SnapshotMeta | null;
 }

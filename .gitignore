@@ -10,9 +10,13 @@ js/.tsup
 .tsup
 *.tsbuildinfo
 
-# local publish runbook (never commit)
-PUBLISHING.md
-
-# local launch/promo drafts (never commit)
+# ---- NEVER COMMIT: everything personal/strategic lives under private/ ----
+# (promo drafts, traffic tracker + stats, research notes, reports, publish
+#  runbook, specs). The legacy top-level names stay ignored as a safety net.
+private/
 promo/
 PROMO.md
+PUBLISHING.md
+scripts/
+research_notes/
+reports/

@@ -51,6 +51,15 @@ export interface CloseRequest {
   id: RequestId;
   type: 'close';
 }
+/**
+ * Delete store `name`'s OPFS directory. Only legal in a worker with no open
+ * store (sent by `Ferrovec.destroy` to a throwaway worker).
+ */
+export interface DestroyRequest {
+  id: RequestId;
+  type: 'destroy';
+  name: string;
+}
 
 export type WorkerRequest =
   | OpenRequest
@@ -60,7 +69,8 @@ export type WorkerRequest =
   | SizeRequest
   | FlushRequest
   | RoleRequest
-  | CloseRequest;
+  | CloseRequest
+  | DestroyRequest;
 
 /** `Omit` that distributes over a union (plain `Omit` collapses to shared keys). */
 export type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
@@ -75,6 +85,9 @@ export interface OpenResult {
   persistent: boolean;
   /** Coordination role this session resolved to: leader, follower, or solo. */
   role: Role;
+  // `storagePersisted` is deliberately NOT part of this payload: the
+  // `navigator.storage.persist()` request is Window-only, so the main-thread
+  // proxy makes it itself and exposes the answer as `Ferrovec.storagePersisted`.
 }
 export interface InsertResult {
   id: string;
@@ -95,6 +108,9 @@ export interface RoleResult {
 export interface CloseResult {
   closed: true;
 }
+export interface DestroyResult {
+  destroyed: true;
+}
 
 export interface SuccessResponse {
   id: RequestId;
@@ -105,6 +121,12 @@ export interface ErrorResponse {
   id: RequestId;
   ok: false;
   error: string;
+  /**
+   * The thrown error's `name` (e.g. `'EmbeddingSpaceMismatchError'`), so the
+   * main thread can rethrow an `Error` callers can `switch (err.name)` on —
+   * class identity does not survive `postMessage`.
+   */
+  errorName?: string;
 }
 export type WorkerResponse = SuccessResponse | ErrorResponse;
 

@@ -11,7 +11,9 @@
  */
 
 import { Coordinator } from './coordinator.ts';
+import { DEFAULT_MODEL } from './embedder.ts';
 import { Engine } from './engine.ts';
+import { destroyStore } from './persistence.ts';
 import type { RoleChangeEvent, WorkerRequest, WorkerResponse } from './protocol.ts';
 
 // In a dedicated worker `self` is a DedicatedWorkerGlobalScope; the DOM lib
@@ -45,12 +47,14 @@ async function open(request: Extract<WorkerRequest, { type: 'open' }>): Promise<
   const coordinator = await Coordinator.open({
     name: request.name,
     persist: request.persist,
-    makeEngine: ({ core, initialTexts, persister }) =>
+    expectedModel: request.model ?? DEFAULT_MODEL,
+    makeEngine: ({ core, initialTexts, initialMeta, persister }) =>
       Engine.create({
         model: request.model,
         device: request.device,
         core,
         initialTexts,
+        initialMeta,
         persister,
       }),
   });
@@ -88,6 +92,12 @@ async function handle(request: WorkerRequest): Promise<unknown> {
       if (current) await current.close();
       return { closed: true };
     }
+    case 'destroy':
+      // Deleting files under an open store's handles would fail (or, worse,
+      // race its next commit) — destroy runs in a throwaway, store-less worker.
+      if (store) throw new Error('cannot destroy a store while one is open in this worker');
+      await destroyStore(request.name);
+      return { destroyed: true };
   }
 }
 
@@ -103,6 +113,7 @@ ctx.onmessage = (event: MessageEvent<WorkerRequest>): void => {
         id: request.id,
         ok: false,
         error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof Error ? { errorName: error.name } : {}),
       };
       ctx.postMessage(response);
     },

@@ -72,11 +72,15 @@ console.log(again.persistent);             // true when running from disk
 
 How it works:
 
-- The worker opens `ferrovec/<name>/index.bin` in OPFS via a
-  `FileSystemSyncAccessHandle` (worker-only, secure-context-only).
+- The worker holds exclusive `FileSystemSyncAccessHandle`s (worker-only,
+  secure-context-only) on `ferrovec/<name>/slot-a.bin` and `slot-b.bin` in OPFS.
 - Writes are **full snapshots, debounced ~250 ms**: each `insert`/`remove` marks
-  the store dirty and schedules one `write(at:0)` → `truncate` → `flush`.
-  `close()` always performs a final synchronous flush before releasing the lock.
+  the store dirty and arms the debounce. A commit encodes a complete FVS2
+  snapshot with the next sequence number and writes it (`write` → `truncate` →
+  `flush`) to the slot that does **not** hold the current committed version;
+  only after `flush` does that slot become current. On open, both slots are
+  decoded and the valid one with the highest sequence wins.
+  `close()` always performs a final synchronous commit before releasing the lock.
 - The snapshot contains the serialized vector index **and** the id→text sidecar,
   framed together so a reload restores both atomically.
 
@@ -95,6 +99,70 @@ coordination role with `db.role` (`'leader' | 'follower' | 'solo'`).
 > **Secure context required.** OPFS sync access handles (and the Web Locks API
 > used for leader election) only work over HTTPS or `http://localhost`.
 > Persistence and cross-tab coordination are silently disabled elsewhere.
+
+## Durability guarantees
+
+- **Checksummed snapshots.** Every persisted snapshot is a self-describing FVS2
+  file: magic, format version, a commit sequence number, metadata (embedding
+  model id, dimensions, metric, live item count, writer, timestamp) and a CRC-32
+  over the whole file. Truncated, bit-flipped, or trailing-garbage files are
+  detected on open and never decoded into a wrong index. Byte layout: see
+  [`src/snapshot.ts`](https://github.com/singhpratech/ferrovec/blob/main/js/src/snapshot.ts).
+- **Two slots.** Commits alternate between `slot-a.bin` and `slot-b.bin` in the
+  store's OPFS directory. A crash mid-write can only damage the slot being
+  written; the previous commit survives and is recovered on the next open. If
+  every non-empty slot is unreadable, `open` throws `StoreCorruptError` rather
+  than silently starting empty.
+- **Model guard.** Opening a store with a different embedding model than it was
+  written with throws `EmbeddingSpaceMismatchError` before any model download;
+  dimensions are re-checked once the embedder loads.
+- **No accidental wipe.** An empty index never overwrites a non-empty on-disk
+  index unless items were explicitly removed in that session
+  (`EmptyOverwriteRefusedError`; the on-disk data is left untouched).
+- **Catchable by name.** Errors keep their `name` across the worker boundary:
+
+```ts
+try {
+  const db = await Ferrovec.open('notes', { model: 'Xenova/bge-small-en-v1.5' });
+} catch (err) {
+  switch ((err as Error).name) {
+    case 'EmbeddingSpaceMismatchError':
+      // Either reopen with the model the store was written with, or start over:
+      await Ferrovec.destroy('notes'); // permanently deletes the store
+      break;
+    case 'StoreCorruptError':
+      await Ferrovec.destroy('notes'); // or restore from your own copy
+      break;
+    default:
+      throw err;
+  }
+}
+```
+
+`Ferrovec.destroy(name)` deletes the store's OPFS directory; close every handle
+to it first, in this tab and others.
+
+**Persistent storage.** `Ferrovec.open` asks the browser for persistent storage
+(`navigator.storage.persist()`); the answer is `db.storagePersisted`. Firefox
+shows a prompt for this, so `Ferrovec.open(name, { requestPersistentStorage: false })`
+opts out (default `true`).
+
+**Upgrading from 0.3.x.** Old single-file stores (`index.bin`, FVS1) are read
+once and migrated to the slot format on the first commit; the old file is then
+deleted. **Close every tab of your app first:** a 0.3.x tab that becomes leader
+after a newer tab has migrated the store will write the old single-file format,
+which the new code ignores once slots exist.
+
+**What this does not promise:**
+
+- OPFS `flush()` is content-consistency, not `fsync`. The guarantee is
+  "survives a tab kill, crash, or reload", not "survives power loss". Keep a
+  server-side copy of anything irreplaceable.
+- Safari deletes all script-writable storage for an origin after 7 days of
+  Safari use without interacting with the site, unless the app is installed to
+  the Home Screen. `persist()` grants are heuristic.
+- None of this is a benchmark or crash-test result yet; a published chaos suite
+  is the next phase.
 
 ## Multi-tab
 
@@ -131,10 +199,10 @@ How it works:
   sees every other tab's writes.
 - **Failover.** When the leader tab closes or crashes, its Web Lock releases and
   a waiting follower is **promoted**: it opens the OPFS store (rehydrating from
-  `index.bin`) and becomes the new leader. In-flight follower requests are
+  the newest valid slot) and becomes the new leader. In-flight follower requests are
   retried and transparently answered by the new leader; `db.role` flips from
   `'follower'` to `'leader'` on promotion. Because the promoting tab holds the
-  exclusive lock, it is the legitimate owner of `index.bin`: on transient OPFS
+  exclusive lock, it is the legitimate owner of the slot files: on transient OPFS
   contention it waits for the handle rather than degrading to an empty in-memory
   copy, and if promotion genuinely fails (a corrupt index, or the handle never
   frees) it **re-queues** for the lock instead of dropping out of the election —

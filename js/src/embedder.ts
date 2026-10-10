@@ -61,6 +61,7 @@ export async function createTransformersEmbedder(
 
   let dims = 0;
   const embedder: Embedder = {
+    id: model,
     get dims(): number {
       return dims;
     },
