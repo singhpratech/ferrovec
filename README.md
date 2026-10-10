@@ -14,7 +14,7 @@
   <a href="https://crates.io/crates/ferrovec"><img alt="crates.io" src="https://img.shields.io/crates/v/ferrovec?logo=rust&label=crates.io&color=C13A15" /></a>
   <a href="https://www.npmjs.com/package/ferrovec"><img alt="npm" src="https://img.shields.io/npm/v/ferrovec?logo=npm&label=npm&color=CB3837" /></a>
   <a href="https://docs.rs/ferrovec"><img alt="docs.rs" src="https://img.shields.io/docsrs/ferrovec?logo=docsdotrs&label=docs.rs" /></a>
-  <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-~33%20KB%20gzip-5B48D8" /></a>
+  <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-77%20KB%20%7C%2035%20KB%20gzip-5B48D8" /></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/crates/l/ferrovec" /></a>
 </p>
 
@@ -24,7 +24,7 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 - 🪟 **Cross-tab consistent** — single-writer leader election (Web Locks + BroadcastChannel) so many tabs share one store instead of silently diverging. *(No other in-browser vector lib ships this today.)*
 - ➕ **Incremental** — upsert-style inserts, tombstoning removals, and in-place `compact()`; add one vector without rebuilding the whole index.
 - 🦀 **Real HNSW, in Rust** — a hand-rolled Hierarchical Navigable Small World graph, the same algorithm behind Pinecone, Weaviate, and Qdrant — not brute force.
-- 🪶 **Featherweight & shim-free** — `serde` + `postcard` are the *only* dependencies; the WASM core is ~33 KB gzipped, with no `getrandom` (deterministic splitmix64 PRNG) and no threads, so it's happy on bare `wasm32-unknown-unknown`.
+- 🪶 **Featherweight & shim-free** — `serde` + `postcard` are the *only* dependencies; the WASM core is 77 KB (35 KB gzipped), with no `getrandom` (deterministic splitmix64 PRNG) and no threads, so it's happy on bare `wasm32-unknown-unknown`.
 - ⚡ **SIMD-accelerated** distance on `wasm32 + simd128` with a scalar fallback; `#![deny(unsafe_code)]` everywhere outside the audited kernel. Portable versioned byte format reloads identically native or in-browser.
 
 > **Status — both registries are on `0.4.0`.** crates.io `0.4.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.4.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), and — new in `0.4.0` — crash-safe storage (**M7**): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox. See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
@@ -261,7 +261,7 @@ Vectors that are already L2-normalized (e.g. sentence embeddings) pair naturally
 
 ```sh
 wasm-pack build --target bundler --release
-# -> pkg/  (ferrovec_bg.wasm ~33 KB gzip, JS bindings, TypeScript types)
+# -> pkg/  (ferrovec_bg.wasm 77 KB, 35 KB gzip; JS bindings; TypeScript types)
 ```
 
 Then use it from JavaScript — bring your own embeddings as a `Float32Array`:

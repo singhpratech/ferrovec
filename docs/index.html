@@ -296,7 +296,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
       <div class="feat"><div class="fi">HNSW</div><h4>Approximate nearest-neighbor</h4><p>A hand-rolled Hierarchical Navigable Small World graph — the algorithm behind Pinecone, Weaviate, and Qdrant — in a tiny WASM core.</p></div>
       <div class="feat"><div class="fi">INCREMENTAL</div><h4>Insert one at a time</h4><p>Add vectors as they arrive. No rebuild-the-whole-index penalty — the flaw that hobbles every other browser vector lib.</p></div>
       <div class="feat"><div class="fi">SIMD</div><h4>SIMD-accelerated distance</h4><p>The distance kernel uses WASM SIMD128 with a scalar reference fallback — a free speedup with zero deployment headers.</p></div>
-      <div class="feat"><div class="fi">TINY</div><h4>~33 KB gzipped</h4><p>Dependency-light by design — <code>serde</code> + <code>postcard</code> only, no <code>getrandom</code>, no threads. Small enough to ship anywhere.</p></div>
+      <div class="feat"><div class="fi">TINY</div><h4>77 KB wasm, 35 KB gzipped</h4><p>Dependency-light by design — <code>serde</code> + <code>postcard</code> only, no <code>getrandom</code>, no threads. Small enough to ship anywhere.</p></div>
       <div class="feat"><div class="fi">METRICS</div><h4>Cosine, dot &amp; L2</h4><p>Normalized vectors get a fast dot path; raw vectors get cosine or squared-Euclidean. Smaller always means closer.</p></div>
       <div class="feat"><div class="fi">UPSERT</div><h4>Update &amp; delete by id</h4><p>Re-insert an id to replace it; remove to tombstone. IDs are your own strings — map them to whatever your app stores.</p></div>
       <div class="feat"><div class="fi">SERDE</div><h4>Portable byte format</h4><p>Serialize the whole index to a versioned byte blob and reload it anywhere — the same core runs natively in Rust.</p></div>
@@ -353,7 +353,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
     <h2>A niche where it genuinely wins</h2>
     <p class="section-lede">Rust's frontend problem was never speed — it was adoption and ecosystem. So we don't fight React; we live where Rust is strongest: the compute core.</p>
     <div class="stats">
-      <div class="stat"><div class="num">33 KB</div><div class="lbl">gzipped WASM core, wasm-opt'd</div></div>
+      <div class="stat"><div class="num">77 KB</div><div class="lbl">WASM core (35 KB gzipped)</div></div>
       <div class="stat"><div class="num">2</div><div class="lbl">dependencies in the whole crate</div></div>
       <div class="stat"><div class="num">0.99</div><div class="lbl">recall@1 on a 2,000-vector benchmark</div></div>
       <div class="stat"><div class="num">0</div><div class="lbl">servers, API keys, or network calls</div></div>
@@ -367,7 +367,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
     <h2>The roadmap, shipped end to end</h2>
     <div class="road">
       <div class="mile"><span class="mid">M1</span><div><h4>Rust HNSW core <span class="status done">0.4.0</span></h4><p>Hand-rolled graph: incremental insert, k-NN search, three metrics, byte serialization, full test suite. Native and wasm32.</p></div></div>
-      <div class="mile"><span class="mid">M2</span><div><h4>WASM boundary + SIMD <span class="status done">0.4.0</span></h4><p>wasm-bindgen <code>FerrovecCore</code> class over <code>Float32Array</code>, SIMD128 distance kernel, ~33 KB gzip.</p></div></div>
+      <div class="mile"><span class="mid">M2</span><div><h4>WASM boundary + SIMD <span class="status done">0.4.0</span></h4><p>wasm-bindgen <code>FerrovecCore</code> class over <code>Float32Array</code>, SIMD128 distance kernel, 77 KB (35 KB gzip).</p></div></div>
       <div class="mile"><span class="mid">—</span><div><h4>Compaction <span class="status done">0.4.0</span></h4><p><code>compact()</code> rebuilds the index in place to reclaim memory from tombstoned nodes; <code>clear()</code> resets it. On crates.io now.</p></div></div>
       <div class="mile"><span class="mid">M3</span><div><h4>Worker + embeddings <span class="status done">0.4.0</span></h4><p>Dedicated worker loads transformers.js + WASM; end-to-end <code>insert(text)</code> / <code>query(text)</code>. Live on npm.</p></div></div>
       <div class="mile"><span class="mid">M4</span><div><h4>OPFS persistence <span class="status done">0.4.0</span></h4><p>Sync-access-handle read/write/flush, hydrate on open, survive reloads. The differentiator nobody else ships — verified with a real headless-browser round-trip.</p></div></div>

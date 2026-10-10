@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/ferrovec"><img alt="npm" src="https://img.shields.io/npm/v/ferrovec?logo=npm&label=npm&color=CB3837" /></a>
-  <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-~33%20KB%20gzip-5B48D8" /></a>
+  <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-77%20KB%20%7C%2035%20KB%20gzip-5B48D8" /></a>
   <a href="https://crates.io/crates/ferrovec"><img alt="Rust core on crates.io" src="https://img.shields.io/crates/v/ferrovec?logo=rust&label=rust%20core&color=C13A15" /></a>
   <a href="https://github.com/singhpratech/ferrovec/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/ferrovec" /></a>
 </p>

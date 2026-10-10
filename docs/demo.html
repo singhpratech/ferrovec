@@ -797,7 +797,7 @@ async function boot() {
     $('s-status').style.color = 'var(--good)';
     $('s-dims').textContent = String(core.dims());
     $('s-vecs').textContent = String(core.len());
-    $('s-size').textContent = (Math.round(b64ToBytes(WASM_B64).length / 1024)) + ' KB wasm';
+    $('s-size').textContent = (Math.round(b64ToBytes(WASM_B64).length / 1000)) + ' KB wasm';
     buildQueries();
   } catch (err) {
     $('s-status').textContent = 'wasm error';
