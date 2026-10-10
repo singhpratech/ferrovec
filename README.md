@@ -47,20 +47,28 @@ ferrovec is for apps where the vectors in the browser are the **only copy**, and
 
 ## How ferrovec is different
 
-In-browser vector search is a **crowded space** in 2026 — and this section is here to be honest about it. Plenty of libraries now put an HNSW index in the browser, several of them Rust→WASM like this one (altor-vec, EdgeVec, VecLite, ruvector). What almost none of them do is **remember**: they're in-memory engines — load vectors, query, and on the next reload you start over. Persistence and multi-tab consistency are left to you.
+In-browser vector search is a **crowded space** in 2026 — and this section is here to be honest about it. Plenty of libraries now put an HNSW index in the browser, several of them Rust→WASM like this one (altor-vec, EdgeVec, VecLite, ruvector). What almost none of them do is **remember safely**: the index is a blob the app has to save, nothing is checksummed, nothing is crash-tested, and multi-tab consistency is left to you.
 
 ferrovec's wedge is exactly that missing half — **durability and consistency**:
 
-| | Engine | Index | Incremental | Persists in-browser | Cross-tab safe | Checksummed, crash-tested file |
-| --- | --- | --- | --- | --- | --- | --- |
-| **ferrovec** | Rust/WASM | **HNSW** | ✅ | ✅ **OPFS, built-in** | ✅ **leader election** | ✅ |
-| altor-vec | Rust/WASM | HNSW | ✅ | ❌ | ❌ | ❌ |
-| EdgeVec / VecLite / ruvector | Rust/WASM | HNSW | ✅ | ❌ in-memory | ❌ | ❌ |
-| EntityDB | JS + WASM | brute-force | ✅ | ✅ IndexedDB | ❌ | ❌ |
-| voy | Rust/WASM | kd-tree | ❌ rebuild | ❌ app-managed | ❌ | ❌ |
-| Orama | TypeScript | brute-force | ✅ | ❌ serialize only | ❌ | ❌ |
+| Library | Engine | Embeddings | Persists to | Checksummed file | Durable commit | Multi-tab | Published crash test | Size |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **ferrovec 0.4.0** | Rust→WASM **HNSW** | ✅ built in (MiniLM) | ✅ **OPFS**: two snapshot slots + write-ahead log | ✅ CRC-32 | ✅ flushed before ack | ✅ **Web Locks leader** | ✅ 1,000 cycles × 2 browsers | 77 KB (35 KB gz) |
+| EdgeVec | Rust→WASM HNSW + binary quantization | ❌ bring your own | IndexedDB, one put of the whole blob | ❌ | ❌ (Rust WAL exists, not exposed in the browser) | ❌ single tab by design | ❌ | 217 KB gz (self-reported) |
+| VecLite | Rust→WASM | transformers.js | IndexedDB / JSON blob | ❌ | ❌ | ❌ | ❌ | not published |
+| @ruvector/wasm | Rust→WASM HNSW | ❌ bring your own | IndexedDB vectors; graph rebuilt on load | ❌ | ❌ | ❌ | ❌ | not published |
+| voy | Rust→WASM k-d tree | ❌ bring your own | serialize to string; app stores it | ❌ | ❌ every add returns a new blob | ❌ | ❌ | not published |
+| altor-vec | Rust→WASM HNSW | ❌ bring your own | static index built at deploy, fetched from CDN | ❌ | ❌ | ❌ | ❌ | 54 KB |
+| Orama | JS, brute-force vector scan | plugin | persistence plugin: snapshot blob, app stores it | ❌ | ❌ | ❌ | ❌ | not measured |
+| EntityDB | JS, brute-force cosine | ✅ built in (transformers.js) | IndexedDB, one record per vector | ❌ | ⚠️ per-record IndexedDB transactions | ⚠️ shared DB, no coordination | ❌ | not measured |
+| MeMemo | JS HNSW | ❌ bring your own | IndexedDB vectors, graph in memory | ❌ | ⚠️ per-record | ❌ | ❌ | not measured |
+| hnsw (npm) / TinkerBird | JS HNSW | ❌ bring your own | IndexedDB | ❌ | ⚠️ | ❌ | ❌ | not measured |
+| sqlite-vec in SQLite Wasm | C, brute-force kNN | ❌ bring your own | OPFS through SQLite's VFS | ⚠️ journal, no page checksums by default | ✅ SQLite atomic commit | ❌ one connection per OPFS pool | ❌ | ~1.5 MB wasm |
+| PGlite + pgvector | Postgres in WASM, HNSW / IVFFlat | ❌ bring your own | IndexedDB whole-file flush, or OPFS (worker only, no Safari) | ⚠️ Postgres checksums off by default | ✅ Postgres WAL inside the VFS | ⚠️ BroadcastChannel leader, open bugs | ❌ | ~3 MB gz |
+| DuckDB-wasm + vss | C++, HNSW (experimental) | ❌ bring your own | OPFS WAL + checkpoint | ❌ | ⚠️ HNSW WAL recovery "not implemented" | ❌ one handle per file | ❌ | several MB |
+| turbovec | Rust / Python, flat TurboQuant scan | ❌ | server / local disk — does not build for WASM (64-bit only) | ❌ | ❌ | ❌ | ❌ | n/a |
 
-*Landscape as surveyed July 2026; this field moves fast, so treat other projects' rows as directional and check their latest.* If all you need is a fast in-memory ANN for a single page view, several of these are excellent and lighter than ferrovec. Reach for ferrovec when the index has to **outlive the page** and **stay correct across tabs** — a notes app, an offline PWA, or "chat with your docs" that shouldn't re-embed everything on every visit.
+*What each project documents about itself, checked 2026-10-10. A ❌ means the project does not claim it; ⚠️ means it half-qualifies. Only ferrovec's row has been crash-tested by us ([results](https://singhpratech.github.io/ferrovec/chaos.html)); the SQL engines inherit real transactional commits from SQLite and Postgres, at 20–40× the size and with no ANN index, no Safari, or an experimental flag. This field moves fast; check each project's latest.* If all you need is a fast in-memory ANN for a single page view, several of these are excellent and lighter than ferrovec. Reach for ferrovec when the index has to **outlive the page** and **stay correct across tabs** — a notes app, an offline PWA, or "chat with your docs" that shouldn't re-embed everything on every visit.
 
 ## Durability guarantees
 
