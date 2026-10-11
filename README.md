@@ -149,7 +149,7 @@ Neither run hit a torn log tail this time (an earlier Chromium run on the previo
 
 ```toml
 [dependencies]
-ferrovec = "0.3"
+ferrovec = "0.4"
 ```
 
 ## Quick start
