@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
 <style>
   :root {
-    --paper: #FAF7F2; --card: #FFFFFF; --ink: #241E1A; --ink-soft: #5A5049; --ink-faint: #8A7F76;
+    --paper: #FAF7F2; --card: #FFFFFF; --ink: #241E1A; --ink-soft: #5A5049; --ink-faint: #6F665D;
     --border: rgba(36,30,26,.12); --border-soft: rgba(36,30,26,.07);
     --rust: #C13A15; --rust-soft: rgba(193,58,21,.10);
     --wasm: #5B48D8; --wasm-soft: rgba(91,72,216,.10);
@@ -27,20 +27,20 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --paper: #14110F; --card: #1E1A17; --ink: #EDE6DE; --ink-soft: #B7ADA3; --ink-faint: #8A8078;
+      --paper: #14110F; --card: #1E1A17; --ink: #EDE6DE; --ink-soft: #B7ADA3; --ink-faint: #9A9087;
       --border: rgba(237,230,222,.14); --border-soft: rgba(237,230,222,.07);
       --rust: #F0623A; --rust-soft: rgba(240,98,58,.13); --wasm: #9A88FF; --wasm-soft: rgba(154,136,255,.14);
       --good: #4FC98A; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
     }
   }
   :root[data-theme="light"] {
-    --paper: #FAF7F2; --card: #FFFFFF; --ink: #241E1A; --ink-soft: #5A5049; --ink-faint: #8A7F76;
+    --paper: #FAF7F2; --card: #FFFFFF; --ink: #241E1A; --ink-soft: #5A5049; --ink-faint: #6F665D;
     --border: rgba(36,30,26,.12); --border-soft: rgba(36,30,26,.07);
     --rust: #C13A15; --rust-soft: rgba(193,58,21,.10); --wasm: #5B48D8; --wasm-soft: rgba(91,72,216,.10);
     --good: #1E7A4D; --shadow: 0 1px 2px rgba(36,30,26,.05), 0 6px 22px rgba(36,30,26,.06);
   }
   :root[data-theme="dark"] {
-    --paper: #14110F; --card: #1E1A17; --ink: #EDE6DE; --ink-soft: #B7ADA3; --ink-faint: #8A8078;
+    --paper: #14110F; --card: #1E1A17; --ink: #EDE6DE; --ink-soft: #B7ADA3; --ink-faint: #9A9087;
     --border: rgba(237,230,222,.14); --border-soft: rgba(237,230,222,.07);
     --rust: #F0623A; --rust-soft: rgba(240,98,58,.13); --wasm: #9A88FF; --wasm-soft: rgba(154,136,255,.14);
     --good: #4FC98A; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
@@ -132,9 +132,9 @@
   .res.top .rank { color: var(--rust); font-weight: 700; }
   .res-text { flex: 1; font-size: .92rem; color: var(--ink); }
   .score { font-family: var(--mono); font-size: .8rem; font-weight: 600; color: var(--wasm); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .bar { height: 4px; border-radius: 3px; background: var(--border-soft); margin-top: .5rem; overflow: hidden; }
-  .bar > i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--wasm), var(--rust)); transition: width .5s cubic-bezier(.2,.7,.2,1); }
-  @media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+  .scorebar { height: 4px; border-radius: 3px; background: var(--border-soft); margin-top: .5rem; overflow: hidden; }
+  .scorebar > i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--wasm), var(--rust)); transition: width .5s cubic-bezier(.2,.7,.2,1); }
+  @media (prefers-reduced-motion: reduce) { .scorebar > i { transition: none; } }
   .empty { color: var(--ink-faint); font-size: .9rem; padding: 1.2rem 0; text-align: center; }
 
   /* Corpus list */
@@ -165,17 +165,17 @@
   .banner.show { display: block; }
 
   /* ---- notebook section (part two of the demo): tokens and rules scoped to #notebook ---- */
-  #notebook { --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #8B8478;
+  #notebook { --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #6E675C; --btn-fg: #FFFFFF;
     --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
     --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4; --wasm: #5B48D8; --wasm-soft: #E3DFF7;
     --good: #2E6B3C; --good-soft: #DBE9DD; --warn: #8A6410; --warn-soft: #F3E7C9; --code-bg: #EBE7DE;
     --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
     --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #8E8679; --btn-fg: #1A110C;
     --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
     --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
     --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --warn-soft: #33290F; --code-bg: #1E1A15; } }
-  :root[data-theme="dark"] #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #746C60;
+  :root[data-theme="dark"] #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #8E8679; --btn-fg: #1A110C;
     --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
     --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
     --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --warn-soft: #33290F; --code-bg: #1E1A15; }
@@ -234,7 +234,7 @@
   .composer input:focus-visible, .find input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--wasm); outline-offset: 2px; }
   .btn { font-family: var(--mono); font-size: 0.85rem; padding: 0.65rem 1rem; border-radius: 6px; border: 1px solid transparent; cursor: pointer; white-space: nowrap; transition: transform 0.12s ease, background 0.2s; }
   .btn:disabled { opacity: 0.5; cursor: default; }
-  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary { background: var(--accent); color: var(--btn-fg); }
   .btn.primary:not(:disabled):hover { background: var(--accent-2); transform: translateY(-1px); }
   .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
   .btn.ghost:not(:disabled):hover { border-color: var(--ink-faint); }
@@ -269,10 +269,10 @@
   /* under the hood */
   .files { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; gap: 0.5rem 0.9rem; align-items: center; font-family: var(--mono); font-size: 0.78rem; }
   .files .name { color: var(--ink); }
-  .files .bar { height: 10px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
-  .files .bar i { display: block; height: 100%; background: var(--wasm); width: 0; transition: width 0.3s ease; }
-  .files .bar i.snap { background: var(--accent); }
-  .files .bar i.torn { background: repeating-linear-gradient(45deg, var(--accent), var(--accent) 4px, transparent 4px, transparent 8px); }
+  .files .fbar { height: 10px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .files .fbar i { display: block; height: 100%; background: var(--wasm); width: 0; transition: width 0.3s ease; }
+  .files .fbar i.snap { background: var(--accent); }
+  .files .fbar i.torn { background: repeating-linear-gradient(45deg, var(--accent), var(--accent) 4px, transparent 4px, transparent 8px); }
   .files .val { color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .files .val b { color: var(--ink); font-weight: 500; }
   .hood p { color: var(--ink-soft); font-size: 0.95rem; margin: 0.9rem 0 0; }
@@ -302,13 +302,13 @@
 <main class="wrap">
   <div class="tabs" role="tablist" aria-label="Demo parts">
     <button class="tab" role="tab" type="button" id="tab-search" data-tab="search" aria-controls="pane-search" aria-selected="true">Semantic search</button>
-    <button class="tab" role="tab" type="button" id="tab-notebook" data-tab="notebook" aria-controls="notebook" aria-selected="false">Use cases · pull the plug</button>
+    <button class="tab" role="tab" type="button" id="tab-notebook" data-tab="notebook" aria-controls="notebook" aria-selected="false">Use cases · kill the tab</button>
   </div>
   <div id="pane-search" class="pane" role="tabpanel" aria-labelledby="tab-search">
   <section class="hero">
     <p class="eyebrow">Real WASM &middot; no server &middot; no network</p>
     <h1>Semantic search, running entirely in this browser tab.</h1>
-    <p class="lede">Everything below is <b>the actual <code style="font-family:var(--mono);font-size:.85em">ferrovec</code> Rust&rarr;WebAssembly core</b> &mdash; the same 77&nbsp;KB crate published to npm &mdash; doing live approximate-nearest-neighbour search over 24 sentence embeddings. The WASM binary and the vectors are baked into this single HTML file. Nothing is fetched; close your Wi-Fi and it still works.</p>
+    <p class="lede">Everything below is <b>the actual <code style="font-family:var(--mono);font-size:.85em">ferrovec</code> Rust&rarr;WebAssembly core</b> &mdash; the same 77&nbsp;KB crate published to npm &mdash; doing live approximate-nearest-neighbour search over 24 sentence embeddings. The WASM binary and the vectors are baked into this single HTML file. Nothing is fetched for this tab; close your Wi-Fi and the search still works.</p>
 
     <div class="stats" id="stats">
       <span class="chip"><span class="dot"></span><span class="k">status</span><span class="v" id="s-status">booting WASM&hellip;</span></span>
@@ -366,7 +366,7 @@
       <div class="cardx">
         <div class="n">03 &middot; the search</div>
         <h3>Live k-NN ranking</h3>
-        <p>On each query the core walks the HNSW graph and returns the nearest neighbours by cosine similarity &mdash; in well under a millisecond &mdash; exactly as it would over millions of vectors on a server or the edge.</p>
+        <p>On each query the core walks the HNSW graph and returns the nearest neighbours by cosine similarity &mdash; in well under a millisecond here. The corpus is 24 vectors, so this shows the code path, not the scaling; the graph walk is what keeps it sub-linear on large indexes.</p>
       </div>
     </div>
 
@@ -381,16 +381,16 @@
 <section id="notebook" class="pane" role="tabpanel" aria-labelledby="tab-notebook" hidden>
 <p class="nb-eyebrow">Real ferrovec · in this tab · no server</p>
     <h2 class="nb-title">A notebook that remembers.</h2>
-    <p class="nb-lede">Write a few notes. Then <b>pull the plug</b> while it is still writing, or open it in a second tab. The notes are in the real ferrovec store: a Rust→WASM index written to this browser's private file system behind a checksummed write-ahead log. <b>What this page acknowledges, it keeps.</b></p>
+    <p class="nb-lede">Write a few notes. Then <b>kill the tab</b> while it is still saving, or open it in a second tab. The notes are in the real ferrovec store: a Rust→WASM index written to this browser's private file system behind a checksummed write-ahead log. <b>What this page acknowledges, it keeps.</b></p>
     <div class="cta">
-      <button class="btn primary big" type="button" id="plug-hero">Pull the plug now</button>
+      <button class="btn primary big" type="button" id="plug-hero">Kill the tab mid-save</button>
       <button class="btn ghost big" type="button" id="tab2-hero">Open a second tab</button>
-      <span class="cta-note" id="cta-note">saves 25 notes and reloads mid-save, then shows what survived</span>
+      <span class="cta-note" id="cta-note">saves 25 notes as fast as it can, tears the tab down while saves are still in flight, then shows what survived</span>
     </div>
     <nav class="uc" aria-label="Use cases">
       <span>Use cases on this page:</span>
       <a href="#uc-notes">notes that survive a reload</a>
-      <a href="#uc-break">a tab killed mid-write</a>
+      <a href="#uc-break">a tab killed mid-save</a>
       <a href="#uc-break">a crash during a checkpoint</a>
       <a href="#uc-break">two tabs, one store</a>
       <a href="#uc-find">private search over your notes</a>
@@ -406,11 +406,11 @@
     <span id="embed-txt"></span>
   </div>
 
-  <div id="receipt" role="status" aria-live="polite" hidden></div>
+  <div id="receipt" role="status" aria-live="polite" class="receipt" hidden></div>
 
   <section>
     <h2 class="sec" id="uc-notes">Your notes</h2>
-    <p class="sub">Each save is acknowledged only after its log record is on disk. The time shown is how long that took.</p>
+    <p class="sub">Each save is acknowledged only after its log record is flushed to OPFS. That is a flush, not an fsync: it survives a killed tab, not a power cut. The time shown is how long the flush took.</p>
     <form class="composer" id="composer">
       <input id="note" type="text" placeholder="Write a note and press Enter…" autocomplete="off" maxlength="400" />
       <button class="btn primary" type="submit" id="save">Save</button>
@@ -421,12 +421,12 @@
 
   <section>
     <h2 class="sec" id="uc-break">Now try to lose them</h2>
-    <p class="sub">Each of these does something real to this tab or its files. The page measures what comes back.</p>
+    <p class="sub">Each of these does something real to this tab or its files, and the page measures what comes back. They need this tab to be the leader and the only open tab.</p>
     <div class="break">
       <div class="card">
-        <h3>Pull the plug mid-write</h3>
-        <p>Saves 25 notes as fast as it can and reloads the tab partway through, with no close and no flush. The reload lands while a save is in flight.</p>
-        <button class="btn danger" type="button" id="plug">Pull the plug</button>
+        <h3>Kill the tab mid-save</h3>
+        <p>Saves 25 notes as fast as it can, then tears the page and its worker down while saves are still in flight: no close, no flush. Whatever was acknowledged must come back.</p>
+        <button class="btn danger" type="button" id="plug">Kill it mid-save</button>
       </div>
       <div class="card">
         <h3>Crash during a checkpoint</h3>
@@ -445,7 +445,7 @@
 
   <section>
     <h2 class="sec" id="uc-find">Find a note</h2>
-    <p class="sub" id="find-sub">Nearest-neighbour search over the index, in this tab. With the instant embedder, search by words from the note; for meaning-based search see the <a href="./demo.html">search demo</a>, which runs MiniLM vectors.</p>
+    <p class="sub" id="find-sub">Nearest-neighbour search over the index, in this tab. With the instant embedder, search by words from the note; for meaning-based search open the <a href="#search">Semantic search</a> tab, which runs MiniLM vectors.</p>
     <form class="find" id="findform">
       <input id="q" type="text" placeholder="a few words from a note…" autocomplete="off" />
       <button class="btn ghost" type="submit" id="find">Find</button>
@@ -458,10 +458,12 @@
     <p class="sub">The store's files in OPFS, read by this page while the store is open. Two snapshot slots alternate; the log holds everything since the newest one.</p>
     <div class="files" id="files"></div>
     <p id="embed-note"></p>
-    <pre><span class="c">// The same three lines run this page (npm: ferrovec).</span>
+    <pre><span class="c">// What this page calls (npm: ferrovec 0.4.0). The hashed embedder is demo-only:</span>
+<span class="c">// a worker built from the package source that swaps MiniLM for a hashing function.</span>
 <span class="k">import</span> { Ferrovec } <span class="k">from</span> <span class="s">'ferrovec'</span>;
-<span class="k">const</span> db = <span class="k">await</span> Ferrovec.open(<span class="s">'notebook'</span>);   <span class="c">// worker + model + OPFS</span>
-<span class="k">await</span> db.insert(<span class="s">'call the dentist tuesday'</span>);  <span class="c">// resolves once it is on disk</span></pre>
+<span class="k">const</span> db = <span class="k">await</span> Ferrovec.open(<span class="s">'notebook'</span>, { model: <span class="s">'hashed-trigram-v1'</span>, requestPersistentStorage: <span class="k">false</span> });
+<span class="k">await</span> db.insert(<span class="s">'call the dentist tuesday'</span>);  <span class="c">// resolves once the log record is flushed</span>
+<span class="k">const</span> notes = <span class="k">await</span> db.list({ limit: <span class="k">12</span> });       <span class="c">// what the list above shows</span></pre>
   </section>
 </section>
 </main>
@@ -487,9 +489,15 @@
   const tabs = [...document.querySelectorAll('.tab')];
   function show(name, push) {
     for (const [k, el] of Object.entries(panes)) el.hidden = k !== name;
-    for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.tab === name));
+    for (const t of tabs) { const on = t.dataset.tab === name; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; }
     if (push) { try { history.replaceState(null, '', '#' + name); } catch { /* ignore */ } }
+    if (name === 'notebook') document.dispatchEvent(new Event('notebook-shown'));
   }
+  document.querySelector('.tabs').addEventListener('keydown', (e) => {
+    const i = tabs.indexOf(document.activeElement); if (i < 0) return;
+    const j = e.key === 'ArrowRight' ? (i + 1) % tabs.length : e.key === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+    if (j < 0) return; e.preventDefault(); tabs[j].focus(); show(tabs[j].dataset.tab, true);
+  });
   const fromHash = () => (location.hash === '#notebook' || location.hash === '#minilm' || /^#uc-/.test(location.hash) ? 'notebook' : 'search');
   show(fromHash(), false);
   for (const t of tabs) t.addEventListener('click', () => show(t.dataset.tab, true));
@@ -1092,9 +1100,9 @@ function renderResults(query, rows, ms) {
       '<div class="res-row"><span class="rank">#' + (i + 1) + '</span>' +
       '<span class="res-text">' + (textById.get(r.id) || r.id).replace(/</g,'&lt;') + '</span>' +
       '<span class="score">' + r.sim.toFixed(3) + '</span></div>' +
-      '<div class="bar"><i></i></div>';
+      '<div class="scorebar"><i></i></div>';
     ul.appendChild(li);
-    requestAnimationFrame(() => { li.querySelector('.bar > i').style.width = pct + '%'; });
+    requestAnimationFrame(() => { li.querySelector('.scorebar > i').style.width = pct + '%'; });
     const src = liById.get(r.id);
     if (src) src.classList.add('hit');
   });
@@ -1103,7 +1111,7 @@ function renderResults(query, rows, ms) {
 boot();
 </script>
 <script type="module">
-import { Ferrovec } from './remember/index.js';
+let Ferrovec = null; // loaded in boot(), so a missing bundle is reported instead of a silent dead page
 
 const $ = (id) => document.getElementById(id);
 const nf = (n) => Number(n).toLocaleString('en-US');
@@ -1113,7 +1121,7 @@ const rand = (n) => Math.random().toString(36).slice(2, 2 + n);
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
 /* ---- which embedder: instant hashed (default) or the real MiniLM (#minilm) ---- */
-const MINILM = location.hash === '#minilm';
+const MINILM = new URLSearchParams(location.search).get('model') === 'minilm';
 const MODEL = MINILM ? 'Xenova/all-MiniLM-L6-v2' : 'hashed-trigram-v1';
 const STORE = MINILM ? 'notebook-minilm' : 'notebook';
 const STORE_DIR = STORE;
@@ -1143,6 +1151,7 @@ const PHRASES = ['the ferry leaves at six', 'buy lamp oil and rope', 'rain again
 let db = null;
 let busy = false;
 let lastRole = null;
+let roleOverride = null; // set when the notebook cannot run at all (no OPFS, no bundle)
 const tabId = rand(4);
 
 /* ---- on-disk inspection, from the main thread (getFile works while the worker holds the handles) ---- */
@@ -1202,7 +1211,7 @@ function renderFiles(info) {
   const el = $('files');
   if (!info) { el.textContent = 'no files yet'; return; }
   const max = Math.max(info.A.size, info.B.size, info.wal.size, 1);
-  const row = (name, size, cls, text) => `<span class="name">${name}</span><span class="bar"><i class="${cls}" style="width:${Math.max(1, (100 * size) / max).toFixed(1)}%"></i></span><span class="val">${text}</span>`;
+  const row = (name, size, cls, text) => `<span class="name">${name}</span><span class="fbar"><i class="${cls}" style="width:${Math.max(1, (100 * size) / max).toFixed(1)}%"></i></span><span class="val">${text}</span>`;
   const slot = (s) => row(s.name + '.bin', s.size, s.valid ? 'snap' : (s.size ? 'torn' : ''), s.valid ? `<b>${nf(s.size)} B</b> · checkpoint #${s.seq} · ${nf(s.count)} docs` : s.size ? `<b>${nf(s.size)} B</b> · ${s.reason} (ignored)` : 'empty');
   el.innerHTML = slot(info.A) + slot(info.B) + row('wal.bin', info.wal.size, '', info.wal.bad ? `<b>${nf(info.wal.size)} B</b> · unreadable` : `<b>${nf(info.wal.size)} B</b> · ${nf(info.wal.records)} records since #${info.wal.base ?? 0}${info.wal.tail ? ` · ${nf(info.wal.tail)} B torn` : ''}`);
 }
@@ -1233,7 +1242,7 @@ function writeStoreFile(file, bytes) {
 /* ---- store ---- */
 async function openStore() {
   const t0 = performance.now();
-  db = await Ferrovec.open(STORE, { model: MODEL });
+  db = await Ferrovec.open(STORE, { model: MODEL, requestPersistentStorage: false });
   const t = performance.now() - t0;
   $('open-ms').textContent = ms(t);
   return t;
@@ -1286,7 +1295,7 @@ async function renderNotes() {
     const t = document.createElement('span'); t.className = 'txt'; t.textContent = text;
     const m = document.createElement('span'); m.className = 'meta';
     const ack = fresh.get(id);
-    m.innerHTML = ack !== undefined ? `<b>on disk in ${ms(ack)}</b>` : (id.startsWith('seed') ? 'starter note' : `on disk`);
+    m.innerHTML = ack !== undefined ? `<b>flushed to OPFS in ${ms(ack)}</b>` : (id.startsWith('seed') ? 'starter note' : `on disk`);
     li.append(t, m);
     return li;
   }));
@@ -1295,16 +1304,16 @@ async function renderNotes() {
   renderFiles(dirInfo);
 }
 function toast(text, cls = '') { const t = $('toast'); t.textContent = text; t.className = `toast ${cls}`; }
-function receipt(kind, html) { const r = $('receipt'); r.className = `receipt ${kind}`; r.innerHTML = html; r.hidden = false; $('cta-note').textContent = 'run it again: every run picks a new random moment to reload'; r.scrollIntoView({ block: 'nearest' }); }
+function receipt(kind, html) { const r = $('receipt'); r.className = `receipt ${kind}`; r.hidden = false; r.innerHTML = ''; setTimeout(() => { r.innerHTML = html; r.scrollIntoView({ block: 'start' }); }, 80); if (kind === '' || kind === 'bad') $('cta-note').textContent = 'run it again: every run picks a new random moment to kill the tab'; }
 function setBusy(b) {
   busy = b;
-  for (const id of ['save', 'plug', 'plug-hero', 'crash', 'tab2', 'tab2-hero', 'find', 'note', 'q']) $(id).disabled = b || !db;
+  for (const id of ['save', 'plug', 'plug-hero', 'crash', 'tab2', 'tab2-hero', 'find', 'note', 'q']) $(id).disabled = b || !db || permDisabled.has(id);
 }
 function tickRole() {
   const role = db ? db.role : null;
   const pill = $('role');
   pill.className = `pill ${role ?? 'off'}`;
-  $('role-txt').textContent = role ? `this tab is ${role}` : 'store closed';
+  $('role-txt').textContent = role ? `this tab is ${role}` : (roleOverride ?? 'store closed');
   if (role && lastRole && role !== lastRole) onRoleChange(lastRole, role);
   if (role) lastRole = role;
 }
@@ -1362,27 +1371,34 @@ $('composer').addEventListener('submit', async (e) => {
 });
 
 /* ---- pull the plug ---- */
+async function soleLeader() {
+  if (db.role === 'follower') { toast('This tab is a follower: the leader tab holds the files, so killing this tab would not test anything. Run it in the leader tab, or close the other tab and wait for this one to be promoted.', 'busy'); return false; }
+  updateTabs();
+  if (peers.size > 0) { toast('Another tab of this page is open. It would take over the store the moment this tab dies, so the test would measure nothing. Close it first.', 'busy'); return false; }
+  return true;
+}
 async function pullPlug() {
   if (busy || !db) return;
+  if (!(await soleLeader())) return;
   setBusy(true);
   const run = rand(3);
   const killAfter = 4 + Math.floor(Math.random() * 17); // reload after ack #4..#20 of 25
   const acked = [];
-  ss.set('pending', { kind: 'plug', run, killAfter, acked: [] });
+  ss.set('pending', { kind: 'plug', store: STORE, run, killAfter, acked: [] });
   toast('Saving 25 notes as fast as possible… the reload will land mid-save.', 'busy');
-  for (let i = 1; i <= 25; i++) {
-    const id = noteId();
-    const text = `Plug test ${run} #${i}: ${pick(PHRASES)}.`;
-    const p = db.insert(text, { id });
-    if (i === killAfter + 1) {
-      ss.set('pending', { kind: 'plug', run, killAfter, acked, inflight: { id, text, n: i } });
-      location.reload(); // no await, no close(), no flush()
-      await new Promise(() => {});
-    }
+  const inflight = [];
+  const save = () => { const id = noteId(); const text = `Kill test ${run} #${acked.length + inflight.length + 1}: ${pick(PHRASES)}.`; return { id, text, p: db.insert(text, { id }) }; };
+  for (let i = 1; i <= killAfter; i++) {
+    const { id, text, p } = save();
     await p;
     acked.push({ id, text });
-    ss.set('pending', { kind: 'plug', run, killAfter, acked }); // recorded the moment it is acknowledged
+    ss.set('pending', { kind: 'plug', store: STORE, run, killAfter, acked }); // recorded the moment it is acknowledged
   }
+  // The rest go out together, un-awaited, and the tab is torn down underneath them.
+  for (let i = killAfter + 1; i <= 25; i++) { const { id, text, p } = save(); inflight.push({ id, text }); p.then(() => { acked.push({ id, text }); ss.set('pending', { kind: 'plug', store: STORE, run, killAfter, acked, inflight }); }, () => {}); }
+  ss.set('pending', { kind: 'plug', store: STORE, run, killAfter, acked, inflight });
+  location.reload(); // no close(), no flush(): the worker is terminated with saves in flight
+  await new Promise(() => {});
 }
 $('plug').addEventListener('click', pullPlug);
 $('plug-hero').addEventListener('click', pullPlug);
@@ -1390,7 +1406,7 @@ $('plug-hero').addEventListener('click', pullPlug);
 /* ---- crash during a checkpoint ---- */
 $('crash').addEventListener('click', async () => {
   if (busy || !db) return;
-  if (db.role === 'follower') { toast('This tab is a follower; the leader tab owns the files. Try it there, or close the other tab.', 'busy'); return; }
+  if (!(await soleLeader())) return;
   setBusy(true);
   toast('Checkpointing, saving 3 notes into the log, then crashing…', 'busy');
   await db.flush(); // checkpoint: the newest slot now holds everything so far
@@ -1402,21 +1418,21 @@ $('crash').addEventListener('click', async () => {
     await db.insert(text, { id });
     notes.push({ id, text });
   }
-  ss.set('pending', { kind: 'crash', notes, newest: before.newest?.name ?? null, seq: before.newest?.seq ?? null });
+  ss.set('pending', { kind: 'crash', store: STORE, notes, newest: before.newest?.name ?? null, seq: before.newest?.seq ?? null });
   location.reload(); // no close(): the 3 notes live only in the log
   await new Promise(() => {});
 });
 
 /* ---- second tab, start over ---- */
 function openSecondTab() {
-  window.open(location.href.split('#')[0] + (MINILM ? '#minilm' : ''), '_blank');
+  window.open(location.pathname + location.search + '#notebook', '_blank');
   toast('Opened a second tab. It will join as a follower and proxy its saves through this one.');
 }
 $('tab2').addEventListener('click', openSecondTab);
 $('tab2-hero').addEventListener('click', openSecondTab);
 $('reset').addEventListener('click', async (e) => {
   e.preventDefault();
-  if (busy) return;
+  if (busy || !Ferrovec) return;
   setBusy(true);
   try {
     if (db) { await db.close(); db = null; }
@@ -1428,7 +1444,10 @@ $('reset').addEventListener('click', async (e) => {
     for (let i = 0; i < SEED.length; i++) await db.insert(SEED[i], { id: `seed-${String(i + 1).padStart(2, '0')}` });
     toast('Store deleted and reseeded.', 'ok');
     await renderNotes();
-  } catch (err) { toast(`Start over failed: ${err.name}: ${err.message}`, 'busy'); }
+  } catch (err) {
+    toast(/another tab/i.test(err.message) ? 'Could not delete the store: another tab of this page has it open. Close the other tabs, then try again.' : `Start over failed: ${err.name}: ${err.message}`, 'busy');
+    if (!db) { try { await openStore(); await renderNotes(); } catch { /* reported above */ } }
+  }
   finally { setBusy(false); }
 });
 
@@ -1454,17 +1473,41 @@ $('findform').addEventListener('submit', async (e) => {
 });
 
 /* ---- boot ---- */
+let permDisabled = new Set();
 async function boot() {
   setBusy(true);
   setInterval(tickRole, 300);
+  try {
+    ({ Ferrovec } = await import('./remember/index.js'));
+  } catch (err) {
+    roleOverride = 'bundle missing';
+    receipt('warn', `<h2>The notebook's code did not load.</h2><p>This page needs <span class="mono">remember/index.js</span>, its worker and the wasm core next to it. A saved copy of the page or an offline visit will not have them.</p><p class="mono">${err.name}: ${err.message}</p>`);
+    setBusy(false);
+    return;
+  }
+  try {
+    await navigator.storage.getDirectory();
+  } catch (err) {
+    roleOverride = 'no private file system';
+    receipt('warn', `<h2>This browser mode has no private file system.</h2><p>The notebook stores its index in OPFS (the Origin Private File System). Firefox private windows and some embedded views block it, so there is nothing to write to here. Open the page in a normal window to try it.</p><p class="mono">${err.name}: ${err.message}</p>`);
+    setBusy(false);
+    return;
+  }
+  try { sessionStorage.setItem(K + 'probe', '1'); sessionStorage.removeItem(K + 'probe'); } catch {
+    permDisabled = new Set(['plug', 'plug-hero', 'crash']);
+    $('cta-note').textContent = 'the kill and crash tests are off here: they need sessionStorage to remember what was acknowledged across the reload, and this browser mode blocks it';
+  }
   $('embed-txt').textContent = MINILM ? 'MiniLM embeddings' : 'instant hashed embeddings';
   $('embed-note').innerHTML = MINILM
-    ? `Embeddings: <b>Xenova/all-MiniLM-L6-v2</b> through transformers.js, the package default (about 28 MB on first visit, cached after). <a href="./demo.html#notebook">Back to the instant embedder</a>.`
-    : `Embeddings here are a <b>hashed-trigram embedder</b> so the page loads with no download: finding a note by a few of its words works, finding "cat" by "kitten" does not. Everything else is the shipped code. The npm package embeds with MiniLM; <a href="#minilm" id="go-minilm">try this notebook with the real model</a> (about 28 MB once).`;
-  $('go-minilm')?.addEventListener('click', () => { setTimeout(() => location.reload(), 0); });
+    ? `Embeddings: <b>Xenova/all-MiniLM-L6-v2</b> through transformers.js, the package default (about 28 MB on first visit, cached after). This is a separate store ("notebook-minilm"); the instant store keeps its own notes. <a href="./demo.html#notebook">Back to the instant embedder</a>.`
+    : `Embeddings here are a <b>hashed-trigram embedder</b> so the page loads with no download: finding a note by a few of its words works, finding "cat" by "kitten" does not. It lives in a demo worker built from the package source; the store, log and coordination are the package's own code. The npm package embeds with MiniLM; <a href="./demo.html?model=minilm#notebook">try this notebook with the real model</a> (about 28 MB once; it opens a separate store).`;
 
-  const pending = ss.get('pending', null);
+  let pending = ss.get('pending', null);
   ss.del('pending');
+  if (pending?.store && pending.store !== STORE) {
+    receipt('warn', `<h2>This reload opened a different store.</h2><p>The test wrote to "${pending.store}" but this page opened "${STORE}" (the embedder mode changed between the two loads), so the notes cannot be checked here and no result is reported. Run the test again in this mode.</p>`);
+    pending = null;
+  }
   const disk = await inspect();
 
   // Crash during a checkpoint: leave the file a killed tab would leave, before the store reopens.
@@ -1483,9 +1526,10 @@ async function boot() {
   try {
     openMs = await openStore();
   } catch (err) {
-    receipt('bad', `<h2>The store refused to open.</h2><p class="mono">${err.name}: ${err.message}</p><p class="fine">ferrovec throws a typed error instead of serving a wrong or empty index. <a href="#" id="r-reset">Start over</a> deletes it.</p>`);
-    $('r-reset').addEventListener('click', (e) => { e.preventDefault(); $('reset').click(); });
-    $('embed-txt').textContent += MINILM ? ' · model load failed?' : '';
+    const typed = ['StoreCorruptError', 'EmbeddingSpaceMismatchError', 'WalCorruptError', 'SnapshotCorruptError'].includes(err.name);
+    receipt('bad', `<h2>The store did not open.</h2><p class="mono">${err.name}: ${err.message}</p><p class="fine">${typed ? 'That is a typed refusal: ferrovec will not serve a wrong or empty index over damaged or mismatched files.' : MINILM ? 'Opening with the real model needs the network for its first download (about 28 MB).' : 'This is an environment error, not a store refusal.'} <a href="#" id="r-reset">Start over</a> deletes the store and reseeds it.</p>`);
+    setTimeout(() => $('r-reset')?.addEventListener('click', (e) => { e.preventDefault(); $('reset').click(); }), 100);
+    setBusy(false);
     tickRole();
     renderFiles(await inspect());
     return;
@@ -1499,41 +1543,46 @@ async function boot() {
 
   if (pending?.kind === 'plug') {
     const lost = await verify(pending.acked);
-    const replayed = disk?.wal.records ?? 0;
-    const inflightPresent = pending.inflight ? (await verify([pending.inflight])).length === 0 : null;
+    const ackedIds = new Set(pending.acked.map((a) => a.id));
+    const inflight = (pending.inflight ?? []).filter((x) => !ackedIds.has(x.id));
+    const inflightLost = inflight.length ? await verify(inflight) : [];
+    const inflightPresent = inflight.length - inflightLost.length;
     const ok = lost.length === 0;
     receipt(ok ? '' : 'bad', `
       <h2>${ok ? 'Back. Nothing acknowledged was lost.' : 'Back, with losses.'}</h2>
-      <p>The reload hit during save #${pending.inflight?.n ?? pending.acked.length + 1} of 25. Every note this page had acknowledged before that was checked against the index by id and exact text.</p>
+      <p>${inflight.length ? `This tab and its worker were torn down with ${inflight.length} save${inflight.length === 1 ? '' : 's'} still unacknowledged.` : 'The teardown came after the last of the 25 saves had already been acknowledged, so none was caught in flight this run.'} Every acknowledged note was checked against the reopened index by id and exact text.</p>
       <div class="facts">
         <div><span>acknowledged</span><b>${pending.acked.length}</b></div>
         <div><span>found</span><b>${pending.acked.length - lost.length}</b></div>
         <div><span>lost</span><b class="lost">${lost.length}</b></div>
         <div><span>reopened in</span><b>${ms(openMs)}</b></div>
-        <div><span>log replayed</span><b>${nf(replayed)} rec</b></div>
+        <div><span>in flight, kept</span><b>${inflightPresent} of ${inflight.length}</b></div>
         ${disk?.wal.tail ? `<div><span>torn tail cut</span><b>${nf(disk.wal.tail)} B</b></div>` : ''}
       </div>
-      <p class="fine">Save #${pending.inflight?.n ?? '?'} was in flight and never acknowledged, so no promise covered it. This time it ${inflightPresent === null ? 'is unknown' : inflightPresent ? 'made it anyway' : 'did not make it'}. ${disk?.newest ? `Reopened from ${disk.newest.name}.bin (checkpoint #${disk.newest.seq}) plus the log.` : 'There was no checkpoint yet: everything came from the log.'}</p>`);
+      <p class="fine">The in-flight saves were never acknowledged, so nothing was promised about them; the ones that reached the log before the worker died are present, the rest are not. ${disk ? `Before reopening, the files held ${disk.newest ? `checkpoint #${disk.newest.seq} in ${disk.newest.name}.bin` : 'no checkpoint yet'} and ${nf(disk.wal.records)} log record${disk.wal.records === 1 ? '' : 's'}; open loaded the checkpoint and replayed the log.` : ''} A killed tab is not a power cut: OPFS flush is not fsync.</p>`);
   }
   if (pending?.kind === 'crash') {
     const lost = await verify(pending.notes);
     const now = await inspect();
     const ok = lost.length === 0 && !pending.stageError;
+    const tornSlot = pending.torn ? now?.[pending.torn.target === 'slot-a' ? 'A' : 'B'] : null;
+    const loadedFrom = now?.newest;
     receipt(ok ? '' : pending.stageError ? 'warn' : 'bad', `
       <h2>${pending.stageError ? 'Could not stage the crash.' : ok ? 'Back. The half-written checkpoint was ignored.' : 'Back, with losses.'}</h2>
-      ${pending.stageError ? `<p class="mono">${pending.stageError}</p>` : `<p>Before reopening, this page wrote ${nf(pending.torn.bytes)} of ${nf(pending.torn.of)} bytes of checkpoint #${pending.seq + 1} over ${pending.torn.target}.bin, which is what a tab killed mid-checkpoint leaves behind. Open saw a torn file, skipped it, loaded checkpoint #${pending.seq} from ${pending.newest}.bin and replayed the log on top.</p>`}
+      ${pending.stageError ? `<p>Staging the torn checkpoint failed before the store reopened, so this run tested nothing. Usually another tab of this page took the store over in the meantime; close other tabs and try again.</p><p class="mono">${pending.stageError}</p>` : `<p>Before reopening, this page wrote the first ${nf(pending.torn.bytes)} of ${nf(pending.torn.of)} bytes of a checkpoint #${pending.seq + 1} over ${pending.torn.target}.bin: the shape a tab killed mid-checkpoint leaves behind (staged by the page, since a real kill cannot be timed to the byte). After reopening, ${tornSlot && !tornSlot.valid ? `${pending.torn.target}.bin is still torn and was ignored` : `${pending.torn.target}.bin has already been replaced by a new checkpoint`}; the valid checkpoint is #${loadedFrom?.seq ?? '?'} in ${loadedFrom?.name ?? '?'}.bin, and the ${pending.notes.length} notes that lived only in the log are checked below.</p>`}
       <div class="facts">
         <div><span>notes in the log</span><b>${pending.notes.length}</b></div>
         <div><span>found</span><b>${pending.notes.length - lost.length}</b></div>
         <div><span>lost</span><b class="lost">${lost.length}</b></div>
         <div><span>reopened in</span><b>${ms(openMs)}</b></div>
       </div>
-      <p class="fine">${now && !now[pending.torn?.target === 'slot-a' ? 'A' : 'B']?.valid ? 'The torn file is still there, marked below; the next checkpoint simply overwrites it.' : 'The torn file has already been overwritten by a new checkpoint.'}</p>`);
+      <p class="fine">The staged tear fails the snapshot's length check; a tear that keeps the length but damages the bytes fails its CRC-32 instead. Both are refused the same way.</p>`);
     await renderNotes();
   }
   tickRole();
 }
-boot();
+if (!document.getElementById('notebook').hidden) boot();
+else document.addEventListener('notebook-shown', () => boot(), { once: true });
 </script>
 </body>
 </html>
