@@ -4,9 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ferrovec — live demo: search, then make it remember</title>
-<meta name="description" content="A self-contained demo: the real ferrovec Rust/WASM HNSW core running semantic vector search entirely in your browser tab — no server, no network." />
+<meta name="description" content="Two demos on one page: the real ferrovec Rust/WASM HNSW core ranking MiniLM vectors in your tab with no server, and a notebook on the ferrovec store that you can kill mid-save without losing an acknowledged note." />
 <meta property="og:title" content="ferrovec — live in-browser semantic search demo" />
-<meta property="og:description" content="The real ferrovec Rust/WASM core running semantic vector search entirely in your browser tab — no server, no network." />
+<meta property="og:description" content="The real ferrovec Rust/WASM core ranking vectors in your tab, and a notebook on the ferrovec store you can kill mid-save without losing an acknowledged note. No server." />
 <meta property="og:image" content="https://singhpratech.github.io/ferrovec/assets/cover.jpg" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:image" content="https://singhpratech.github.io/ferrovec/assets/cover.jpg" />
@@ -29,7 +29,7 @@
     :root {
       --paper: #14110F; --card: #1E1A17; --ink: #EDE6DE; --ink-soft: #B7ADA3; --ink-faint: #9A9087;
       --border: rgba(237,230,222,.14); --border-soft: rgba(237,230,222,.07);
-      --rust: #F0623A; --rust-soft: rgba(240,98,58,.13); --wasm: #9A88FF; --wasm-soft: rgba(154,136,255,.14);
+      --rust: #F0623A; --on-rust: #14110F; --rust-soft: rgba(240,98,58,.13); --wasm: #9A88FF; --wasm-soft: rgba(154,136,255,.14);
       --good: #4FC98A; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
     }
   }
@@ -42,7 +42,7 @@
   :root[data-theme="dark"] {
     --paper: #14110F; --card: #1E1A17; --ink: #EDE6DE; --ink-soft: #B7ADA3; --ink-faint: #9A9087;
     --border: rgba(237,230,222,.14); --border-soft: rgba(237,230,222,.07);
-    --rust: #F0623A; --rust-soft: rgba(240,98,58,.13); --wasm: #9A88FF; --wasm-soft: rgba(154,136,255,.14);
+    --rust: #F0623A; --on-rust: #14110F; --rust-soft: rgba(240,98,58,.13); --wasm: #9A88FF; --wasm-soft: rgba(154,136,255,.14);
     --good: #4FC98A; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 30px rgba(0,0,0,.35);
   }
   * { box-sizing: border-box; }
@@ -62,7 +62,8 @@
     background: color-mix(in srgb, var(--paper) 82%, transparent);
     border-bottom: 1px solid var(--border-soft);
   }
-  .bar { display: flex; align-items: center; gap: 1rem; height: 58px; }
+  .bar { display: flex; align-items: center; gap: 1rem; min-height: 58px; flex-wrap: wrap; row-gap: 0; }
+  @media (max-width: 480px) { .bar { gap: .5rem; } .brand .tag { display: none; } .ghost { padding: .28rem .45rem; font-size: .76rem; } }
   .brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; letter-spacing: -.01em; }
   .brand .tb-logo { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; display: block; box-shadow: 0 0 0 1px var(--border), 0 2px 8px rgba(0,0,0,.25); }
   .brand b { font-size: 1.06rem; }
@@ -116,7 +117,7 @@
   }
   .queries button:hover { border-color: var(--rust); color: var(--rust); }
   .queries button:active { transform: translateY(1px); }
-  .queries button[aria-pressed="true"] { background: var(--rust); border-color: var(--rust); color: #fff; }
+  .queries button[aria-pressed="true"] { background: var(--rust); border-color: var(--rust); color: var(--on-rust, #fff); }
 
   /* Search readout */
   .readout { display: flex; flex-wrap: wrap; gap: 1.1rem; margin: 1.05rem 0 .2rem; padding-top: .95rem; border-top: 1px dashed var(--border); font-family: var(--mono); font-size: .74rem; color: var(--ink-faint); }
@@ -165,7 +166,7 @@
   .banner.show { display: block; }
 
   /* ---- notebook section (part two of the demo): tokens and rules scoped to #notebook ---- */
-  #notebook { --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #6E675C; --btn-fg: #FFFFFF;
+  #notebook { --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #6E675C; --btn-fg: #FFFFFF; --code-k: #A32F10;
     --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
     --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4; --wasm: #5B48D8; --wasm-soft: #E3DFF7;
     --good: #2E6B3C; --good-soft: #DBE9DD; --warn: #8A6410; --warn-soft: #F3E7C9; --code-bg: #EBE7DE;
@@ -277,7 +278,7 @@
   .files .val b { color: var(--ink); font-weight: 500; }
   .hood p { color: var(--ink-soft); font-size: 0.95rem; margin: 0.9rem 0 0; }
   pre { margin: 1rem 0 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.9rem 1rem; font-family: var(--mono); font-size: 0.8rem; line-height: 1.6; overflow-x: auto; }
-  pre .c { color: var(--ink-faint); } pre .k { color: var(--accent); } pre .s { color: var(--good); }
+  pre .c { color: var(--ink-faint); } pre .k { color: var(--code-k, var(--accent)); } pre .s { color: var(--good); }
 
   }
   .tabs { display: flex; gap: 0.4rem; margin: 1.3rem 0 0; border-bottom: 1px solid var(--border, var(--line)); }
@@ -430,7 +431,7 @@
       </div>
       <div class="card">
         <h3>Crash during a checkpoint</h3>
-        <p>Checkpoints, saves 3 more notes, then reloads and leaves a half-written checkpoint file behind, the way a tab killed mid-checkpoint does.</p>
+        <p>Checkpoints, saves 3 more notes into the log, then reloads; before the store reopens, the page stages a half-written checkpoint file, the shape a tab killed mid-checkpoint leaves behind.</p>
         <button class="btn danger" type="button" id="crash">Crash it</button>
       </div>
       <div class="card">
@@ -498,6 +499,7 @@
     const j = e.key === 'ArrowRight' ? (i + 1) % tabs.length : e.key === 'ArrowLeft' ? (i - 1 + tabs.length) % tabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
     if (j < 0) return; e.preventDefault(); tabs[j].focus(); show(tabs[j].dataset.tab, true);
   });
+  if (location.hash === '#minilm' && new URLSearchParams(location.search).get('model') !== 'minilm') { location.replace(location.pathname + '?model=minilm#notebook'); }
   const fromHash = () => (location.hash === '#notebook' || location.hash === '#minilm' || /^#uc-/.test(location.hash) ? 'notebook' : 'search');
   show(fromHash(), false);
   for (const t of tabs) t.addEventListener('click', () => show(t.dataset.tab, true));
@@ -1323,9 +1325,10 @@ let chan = null;
 try { chan = new BroadcastChannel('ferrovec-notebook-page'); } catch { /* unsupported */ }
 const peers = new Map();
 let lastBye = null;
-const post = (m) => { try { chan?.postMessage({ ...m, tab: tabId }); } catch { /* closed */ } };
+let booted = false; // a tab whose notebook never started holds nothing and must not count as a rival
+const post = (m) => { if (!booted) return; try { chan?.postMessage({ ...m, tab: tabId }); } catch { /* closed */ } };
 if (chan) chan.onmessage = (e) => {
-  const m = e.data; if (!m || m.tab === tabId) return;
+  const m = e.data; if (!m || m.tab === tabId || !booted) return;
   peers.set(m.tab, Date.now());
   if (m.type === 'hello') post({ type: 'here' });
   if (m.type === 'bye') { peers.delete(m.tab); lastBye = { tab: m.tab, role: m.role, at: Date.now() }; }
@@ -1345,9 +1348,7 @@ async function onRoleChange(from, to) {
     const after = lastBye && Date.now() - lastBye.at < 30000 ? ` ${ms(Date.now() - lastBye.at)} after the other tab closed` : '';
     toast(`This tab became leader${after}. It replayed the shared store and is now the writer.`, 'ok');
     await renderNotes();
-  } else {
-    toast(`Role changed: ${from} → ${to}.`);
-  }
+  } // a demotion is shown by the pill; a toast here would overwrite the explanation that caused it
 }
 
 /* ---- save ---- */
@@ -1481,6 +1482,7 @@ async function boot() {
     ({ Ferrovec } = await import('./remember/index.js'));
   } catch (err) {
     roleOverride = 'bundle missing';
+    $('reset').closest('p').hidden = true;
     receipt('warn', `<h2>The notebook's code did not load.</h2><p>This page needs <span class="mono">remember/index.js</span>, its worker and the wasm core next to it. A saved copy of the page or an offline visit will not have them.</p><p class="mono">${err.name}: ${err.message}</p>`);
     setBusy(false);
     return;
@@ -1489,10 +1491,12 @@ async function boot() {
     await navigator.storage.getDirectory();
   } catch (err) {
     roleOverride = 'no private file system';
+    $('reset').closest('p').hidden = true;
     receipt('warn', `<h2>This browser mode has no private file system.</h2><p>The notebook stores its index in OPFS (the Origin Private File System). Firefox private windows and some embedded views block it, so there is nothing to write to here. Open the page in a normal window to try it.</p><p class="mono">${err.name}: ${err.message}</p>`);
     setBusy(false);
     return;
   }
+  booted = true;
   try { sessionStorage.setItem(K + 'probe', '1'); sessionStorage.removeItem(K + 'probe'); } catch {
     permDisabled = new Set(['plug', 'plug-hero', 'crash']);
     $('cta-note').textContent = 'the kill and crash tests are off here: they need sessionStorage to remember what was acknowledged across the reload, and this browser mode blocks it';
@@ -1559,7 +1563,7 @@ async function boot() {
         <div><span>in flight, kept</span><b>${inflightPresent} of ${inflight.length}</b></div>
         ${disk?.wal.tail ? `<div><span>torn tail cut</span><b>${nf(disk.wal.tail)} B</b></div>` : ''}
       </div>
-      <p class="fine">The in-flight saves were never acknowledged, so nothing was promised about them; the ones that reached the log before the worker died are present, the rest are not. ${disk ? `Before reopening, the files held ${disk.newest ? `checkpoint #${disk.newest.seq} in ${disk.newest.name}.bin` : 'no checkpoint yet'} and ${nf(disk.wal.records)} log record${disk.wal.records === 1 ? '' : 's'}; open loaded the checkpoint and replayed the log.` : ''} A killed tab is not a power cut: OPFS flush is not fsync.</p>`);
+      <p class="fine">The in-flight saves were never acknowledged, so nothing was promised about them; the ones that reached the log before the worker died are present, the rest are not. ${disk ? `Before reopening, the files held ${disk.newest ? `checkpoint #${disk.newest.seq} in ${disk.newest.name}.bin` : 'no checkpoint yet'} and ${nf(disk.wal.records)} log record${disk.wal.records === 1 ? '' : 's'}; ${disk.newest ? 'open loaded the checkpoint and replayed the log' : 'open replayed the log from the start'}.` : ''} A killed tab is not a power cut: OPFS flush is not fsync.</p>`);
   }
   if (pending?.kind === 'crash') {
     const lost = await verify(pending.notes);
