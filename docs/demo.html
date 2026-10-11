@@ -166,17 +166,17 @@
   .banner.show { display: block; }
 
   /* ---- notebook section (part two of the demo): tokens and rules scoped to #notebook ---- */
-  #notebook { --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #6E675C; --btn-fg: #FFFFFF; --code-k: #A32F10;
+  #notebook { --paper: #F6F3EE; --ink: #201D18; --ink-soft: #58524A; --ink-faint: #6E675C; --btn-fg: #FFFFFF; --code-k: #A32F10; --danger-fg: #A32F10;
     --line: #DDD7CD; --panel: #EDEAE2; --panel-2: #E6E2D9;
     --accent: #C13A15; --accent-2: #E0561F; --accent-soft: #F3DDD4; --wasm: #5B48D8; --wasm-soft: #E3DFF7;
     --good: #2E6B3C; --good-soft: #DBE9DD; --warn: #8A6410; --warn-soft: #F3E7C9; --code-bg: #EBE7DE;
     --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
     --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #8E8679; --btn-fg: #1A110C;
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #8E8679; --btn-fg: #1A110C; --code-k: #F0774B;
     --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
     --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
     --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --warn-soft: #33290F; --code-bg: #1E1A15; } }
-  :root[data-theme="dark"] #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #8E8679; --btn-fg: #1A110C;
+  :root[data-theme="dark"] #notebook { --paper: #14120F; --ink: #EBE6DC; --ink-soft: #A7A093; --ink-faint: #8E8679; --btn-fg: #1A110C; --code-k: #F0774B;
     --line: #2E2922; --panel: #1D1915; --panel-2: #241F19;
     --accent: #EC6236; --accent-2: #F0774B; --accent-soft: #3A1E15; --wasm: #927FF0; --wasm-soft: #241E3E;
     --good: #82BE8F; --good-soft: #1C2C1F; --warn: #D3A83F; --warn-soft: #33290F; --code-bg: #1E1A15; }
@@ -239,7 +239,7 @@
   .btn.primary:not(:disabled):hover { background: var(--accent-2); transform: translateY(-1px); }
   .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
   .btn.ghost:not(:disabled):hover { border-color: var(--ink-faint); }
-  .btn.danger { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+  .btn.danger { background: var(--panel); color: var(--danger-fg, var(--accent)); border-color: var(--accent); }
   .btn.danger:not(:disabled):hover { background: var(--accent-soft); }
   ul.notes { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
   ul.notes li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem 1rem; align-items: baseline; padding: 0.55rem 0.8rem; border-left: 3px solid var(--line); background: var(--panel); border-radius: 0 6px 6px 0; }
