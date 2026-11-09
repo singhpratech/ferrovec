@@ -22,3 +22,6 @@ PUBLISHING.md
 scripts/
 research_notes/
 reports/
+
+# Claude Code harness state (worktrees etc.)
+.claude/

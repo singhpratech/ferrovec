@@ -2,15 +2,8 @@ import './style.css';
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { stepCountIs, streamText, tool, type ModelMessage } from 'ai';
-import { Ferrovec, type InsertOptions, type QueryResult, type StoredDocument } from 'ferrovec';
+import { Ferrovec, type QueryResult } from 'ferrovec';
 import { z } from 'zod';
-
-// ferrovec 0.5 adds per-document metadata: `insert(text, { id, metadata })`,
-// and `metadata` on query hits and list rows. The package linked here may
-// still be 0.4, so these local types describe the 0.5 shape.
-// TODO(0.5): drop the casts and these types once the linked package is 0.5.
-type InsertWithMeta = InsertOptions & { metadata?: Record<string, unknown> };
-type WithMeta<T> = T & { metadata?: Record<string, unknown> };
 
 const STORE_NAME = 'ai-sdk-local-rag';
 const NOTES_PAGE = 1000;
@@ -74,16 +67,12 @@ let db: Ferrovec | null = null;
 
 async function addNote(text: string): Promise<void> {
   if (!db) return;
-  const options: InsertWithMeta = {
-    metadata: { source: 'note', addedAt: new Date().toISOString() },
-  };
-  // TODO(0.5): drop the cast once InsertOptions has `metadata`.
-  await db.insert(text, options as InsertOptions);
+  await db.insert(text, { metadata: { source: 'note', addedAt: new Date().toISOString() } });
 }
 
 async function renderNotes(): Promise<void> {
   if (!db) return;
-  const docs = (await db.list({ limit: NOTES_PAGE })) as WithMeta<StoredDocument>[];
+  const docs = await db.list({ limit: NOTES_PAGE });
   noteList.replaceChildren();
   if (docs.length === 0) {
     noteList.append(make('li', 'muted', 'No notes yet.'));
@@ -155,7 +144,7 @@ interface NoteHit {
   addedAt?: string;
 }
 
-function toNoteHit(hit: WithMeta<QueryResult>): NoteHit {
+function toNoteHit(hit: QueryResult): NoteHit {
   const addedAt = hit.metadata?.addedAt;
   return {
     id: hit.id,
@@ -175,7 +164,7 @@ function buildTools(store: Ferrovec) {
         k: z.number().int().min(1).max(10).optional().describe('How many notes to return (default 4).'),
       }),
       execute: async ({ query, k }): Promise<NoteHit[]> => {
-        const hits = (await store.query(query, k ?? 4)) as WithMeta<QueryResult>[];
+        const hits = await store.query(query, k ?? 4);
         return hits.map(toNoteHit);
       },
     }),

@@ -35,7 +35,7 @@ ferrovec is for apps where the vectors in the browser are the **only copy**, and
 
 - **Local-first notes, journals, and PKM tools.** The user types a note, sees it saved, and closes the lid. The acknowledged insert survives a tab kill; the next open replays the log. No sync server, no re-embedding on launch.
 - **Offline field apps.** Inspection, clinical, survey, or agricultural tools that run for hours without a network and get force-closed by the OS. Semantic search over what was captured has to survive that.
-- **Privacy-bound RAG.** Chat-with-your-documents for legal, HR, health, or internal docs where nothing may leave the device. Embedding a large corpus takes minutes; a checksummed, crash-tested index turns that one-time ingest into a durable asset.
+- **Privacy-bound RAG.** Chat-with-your-documents for legal, HR, health, or internal docs where nothing may leave the device. Embedding a large corpus takes minutes; a checksummed, crash-tested index turns that one-time ingest into a durable asset. Runnable example: [`examples/ai-sdk-local-rag`](./examples/ai-sdk-local-rag) pairs ferrovec with the Vercel AI SDK and a local OpenAI-compatible model (Ollama by default).
 - **Browser extensions with memory.** Tab-history search, reading-list recall, "what did I see about X last week". Extensions are killed and restarted constantly; the write-ahead log is what makes *remembered* true.
 - **Multi-tab dashboards.** Support consoles, CRMs, admin tools where one user has five tabs open and each inserts and searches. One elected leader, one consistent store, no diverging indexes.
 - **Kiosks, edge, and PWA devices with no backend.** They reboot unexpectedly and nobody is there to re-ingest. Open picks the newest valid snapshot, refuses a corrupt one with a typed error, and the app decides what to do.
@@ -83,7 +83,7 @@ Persisting is easy; persisting *safely* is the part that usually goes missing. T
 | section lengths | 3 × 4 bytes | Must sum to the exact file length, so truncation and trailing garbage are caught |
 | CRC-32 | 4 bytes | Over the whole file; catches bit flips |
 | metadata (JSON) | variable | Embedding model id, dimensions, metric, live item count, writer, timestamp |
-| index + id→text sidecar | variable | The HNSW core bytes and the stored texts |
+| index + id→text sidecar | variable | The HNSW core bytes, the stored texts and (from 0.5.0) each document's metadata |
 
 A truncated, bit-flipped, or trailing-garbage file is detected on open and never decoded into a wrong index. The exact byte layout is documented at the top of [`js/src/snapshot.ts`](./js/src/snapshot.ts).
 
