@@ -1,0 +1,22 @@
+{
+  "name": "ferrovec-example-ai-sdk-local-rag",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Fully local RAG in the browser: ferrovec for retrieval, a local OpenAI-compatible model through the Vercel AI SDK.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.87",
+    "ai": "^7.0.165",
+    "ferrovec": "file:../../js",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vite": "^7.3.7"
+  }
+}

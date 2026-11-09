@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local RAG: ferrovec + AI SDK</title>
+  </head>
+  <body>
+    <header>
+      <h1>Local RAG: ferrovec + AI SDK</h1>
+      <p id="store-status" class="muted" role="status">Opening the store…</p>
+    </header>
+
+    <form id="settings" class="settings" autocomplete="off">
+      <label>
+        Base URL
+        <input id="base-url" type="url" value="http://localhost:11434/v1" spellcheck="false" required />
+      </label>
+      <label>
+        Model
+        <input id="model" type="text" value="llama3.2" spellcheck="false" required />
+      </label>
+      <label>
+        API key <span class="muted">(optional, kept in memory)</span>
+        <input id="api-key" type="password" autocomplete="off" spellcheck="false" />
+      </label>
+    </form>
+
+    <main>
+      <section class="notes" aria-labelledby="notes-h">
+        <h2 id="notes-h">Notes</h2>
+        <form id="note-form">
+          <label for="note-text" class="sr-only">New note</label>
+          <textarea id="note-text" rows="4" placeholder="Write a note. It is embedded and stored in this browser (OPFS)."></textarea>
+          <div class="row">
+            <button type="submit" id="add-note" disabled>Add</button>
+            <button type="button" id="add-samples" class="secondary" disabled>Add sample notes</button>
+          </div>
+        </form>
+        <ul id="note-list" class="note-list"></ul>
+      </section>
+
+      <section class="chat" aria-labelledby="chat-h">
+        <h2 id="chat-h">Chat</h2>
+        <ol id="transcript" class="transcript" aria-live="polite"></ol>
+        <form id="chat-form" class="row">
+          <label for="question" class="sr-only">Question</label>
+          <input id="question" type="text" placeholder="Ask about your notes" autocomplete="off" />
+          <button type="submit" id="send" disabled>Send</button>
+          <button type="button" id="stop" class="secondary" hidden>Stop</button>
+        </form>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
