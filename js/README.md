@@ -17,7 +17,7 @@ share one consistent store** instead of silently diverging.
 You give it text. It embeds, indexes, searches, and *remembers* — off the main
 thread, across reloads, across tabs. Nothing leaves the device.
 
-**`0.4.0`** — the three-line browser API (embeddings + OPFS persistence),
+**`0.5.0`** — the three-line browser API (embeddings + OPFS persistence),
 **safe across multiple tabs** via single-writer leader election, and now
 **crash-safe**: checksummed snapshots plus a write-ahead log, verified by a
 [published kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html).
@@ -27,6 +27,11 @@ thread, across reloads, across tabs. Nothing leaves the device.
 > server. First the WASM core ranking real MiniLM vectors in your tab; then, under **Use cases**, a notebook on
 > this package: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged
 > get lost.
+
+> **New in 0.5.0**
+> - **Per-document metadata** — `insert(text, { id, metadata })` stores a JSON object beside the text and returns it on every `query()` hit and `list()` row; see [Three-line API](#three-line-api).
+> - **LangChain.js adapter** — `import { FerrovecVectorStore } from 'ferrovec/langchain'`; see [LangChain.js](#langchainjs).
+> - **Local RAG example** — [`examples/ai-sdk-local-rag`](https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag): notes in ferrovec, retrieval through a Vercel AI SDK tool call, answers from a local model.
 
 ## Who it's for
 
@@ -383,6 +388,7 @@ The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 | **M5** | Three-line browser API on npm | ✅ `0.4.0` |
 | **M6** | Cross-tab leader election (Web Locks) | ✅ `0.4.0` |
 | **M7** | Crash-safe storage — checksummed A/B snapshots, write-ahead log, chaos suite | ✅ `0.4.0` |
+| **M8** | Per-document metadata + LangChain.js adapter + local RAG example | ✅ `0.5.0` |
 
 The pure-Rust HNSW core is published separately on [crates.io](https://crates.io/crates/ferrovec).
 

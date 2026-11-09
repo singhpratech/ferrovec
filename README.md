@@ -27,7 +27,12 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 - 🪶 **Featherweight & shim-free** — `serde` + `postcard` are the *only* dependencies; the WASM core is 77 KB (35 KB gzipped), with no `getrandom` (deterministic splitmix64 PRNG) and no threads, so it's happy on bare `wasm32-unknown-unknown`.
 - ⚡ **SIMD-accelerated** distance on `wasm32 + simd128` with a scalar fallback; `#![deny(unsafe_code)]` everywhere outside the audited kernel. Portable versioned byte format reloads identically native or in-browser.
 
-> **Status — both registries are on `0.4.0`.** crates.io `0.4.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.4.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), and — new in `0.4.0` — crash-safe storage (**M7**): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox. See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+> **Status — both registries are on `0.5.0`.** crates.io `0.5.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.5.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), crash-safe storage (**M7**, `0.4.0`): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox, and — new in `0.5.0` — per-document metadata, a LangChain.js adapter and a local RAG example (**M8**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+
+> **New in 0.5.0**
+> - **Per-document metadata** — `insert(text, { id, metadata })` stores a JSON object beside the text and returns it on every `query()` hit and `list()` row; see [In the browser](#in-the-browser).
+> - **LangChain.js adapter** — `import { FerrovecVectorStore } from 'ferrovec/langchain'`; see [LangChain.js](#langchainjs).
+> - **Local RAG example** — [`examples/ai-sdk-local-rag`](./examples/ai-sdk-local-rag): notes in ferrovec, retrieval through a Vercel AI SDK tool call, answers from a local model.
 
 ## Who it's for
 
@@ -53,7 +58,7 @@ ferrovec's wedge is exactly that missing half — **durability and consistency**
 
 | Library | Engine | Index | Incremental | Embeddings | Persists to | Checksummed file | Durable commit | Multi-tab | Published crash test | Size |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **ferrovec 0.4.0** | Rust→WASM | **HNSW** | ✅ | ✅ built in (MiniLM) | ✅ **OPFS**: two snapshot slots + write-ahead log | ✅ CRC-32 | ✅ flushed before ack | ✅ **Web Locks leader** | ✅ 1,000 cycles × 2 browsers | 77 KB (35 KB gz) |
+| **ferrovec 0.5.0** | Rust→WASM | **HNSW** | ✅ | ✅ built in (MiniLM) | ✅ **OPFS**: two snapshot slots + write-ahead log | ✅ CRC-32 | ✅ flushed before ack | ✅ **Web Locks leader** | ✅ 1,000 cycles × 2 browsers | 77 KB (35 KB gz) |
 | EdgeVec | Rust→WASM | HNSW + binary quantization | ✅ | ❌ bring your own | IndexedDB, one put of the whole blob | ❌ | ❌ (Rust WAL exists, not exposed in the browser) | ❌ single tab by design | ❌ | 217 KB gz (self-reported) |
 | VecLite | Rust→WASM | HNSW | ✅ | transformers.js | IndexedDB / JSON blob | ❌ | ❌ | ❌ | ❌ | not published |
 | @ruvector/wasm | Rust→WASM | HNSW | ✅ | ❌ bring your own | IndexedDB vectors; graph rebuilt on load | ❌ | ❌ | ❌ | ❌ | not published |
@@ -149,7 +154,7 @@ Neither run hit a torn log tail this time (an earlier Chromium run on the previo
 
 ```toml
 [dependencies]
-ferrovec = "0.4"
+ferrovec = "0.5"
 ```
 
 ## Quick start
@@ -288,7 +293,7 @@ const restored = FerrovecCore.fromBytes(bytes);
 > The `js/` package wraps this with automatic embedding via transformers.js
 > (**M3**), crash-safe OPFS persistence (**M4**, **M7**), and cross-tab leader election (**M6**), so the browser API becomes:
 > `const db = await Ferrovec.open('notes'); await db.insert(text); const hits = await db.query('…', 5);`
-> — live on npm as `0.4.0`. `await db.list({ offset, limit })` pages through the stored `{ id, text }`
+> — live on npm as `0.5.0`. `await db.list({ offset, limit })` pages through the stored `{ id, text }`
 > documents in insertion order. From `0.5.0`, `db.insert(text, { id, metadata })` stores a JSON object
 > beside the text (as durable as the text, at most 64 KiB) and returns it on query hits and `list()` rows;
 > an upsert without `metadata` clears it.
@@ -327,8 +332,9 @@ cargo build --target wasm32-unknown-unknown
 | **M5** | `ferrovec` on npm — the three-line browser API | ✅ `0.4.0` |
 | **M6** | Cross-tab leader election (Web Locks) | ✅ `0.4.0` |
 | **M7** | Crash-safe storage — checksummed A/B snapshots, write-ahead log, kill-the-tab chaos suite | ✅ `0.4.0` |
+| **M8** | Per-document metadata + LangChain.js adapter + local RAG example | ✅ `0.5.0` |
 
-> Both registries are published at **`0.4.0`** — crates.io (Rust core) and npm (browser package).
+> Both registries are published at **`0.5.0`** — crates.io (Rust core) and npm (browser package).
 
 ## Design notes
 

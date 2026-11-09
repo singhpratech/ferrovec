@@ -459,7 +459,7 @@
     <p class="sub">The store's files in OPFS, read by this page while the store is open. Two snapshot slots alternate; the log holds everything since the newest one.</p>
     <div class="files" id="files"></div>
     <p id="embed-note"></p>
-    <pre><span class="c">// What this page calls (npm: ferrovec 0.4.0). The hashed embedder is demo-only:</span>
+    <pre><span class="c">// What this page calls (npm: ferrovec 0.5.0). The hashed embedder is demo-only:</span>
 <span class="c">// a worker built from the package source that swaps MiniLM for a hashing function.</span>
 <span class="k">import</span> { Ferrovec } <span class="k">from</span> <span class="s">'ferrovec'</span>;
 <span class="k">const</span> db = <span class="k">await</span> Ferrovec.open(<span class="s">'notebook'</span>, { model: <span class="s">'hashed-trigram-v1'</span>, requestPersistentStorage: <span class="k">false</span> });
