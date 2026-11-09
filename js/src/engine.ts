@@ -20,6 +20,7 @@
  */
 
 import { EmbeddingSpaceMismatchError, WalCorruptError } from './errors.ts';
+import { serializeMetadata, type Metadata } from './metadata.ts';
 import { SNAPSHOT_WRITER, type EmbeddingSpace, type SnapshotSource } from './snapshot.ts';
 import type {
   Embedder,
@@ -55,6 +56,8 @@ export class Engine {
   readonly #persister: Persister;
   /** id → original text, so queries can echo the stored source text back. */
   readonly #texts: Map<string, string>;
+  /** id → parsed metadata, only for documents whose latest insert carried some. */
+  readonly #metadata: Map<string, Metadata>;
   readonly #embeddingSpace: EmbeddingSpace;
   #autoId = 0;
 
@@ -63,6 +66,7 @@ export class Engine {
     core: VectorCore,
     persister: Persister,
     texts: Map<string, string>,
+    metadata: Map<string, Metadata>,
     embeddingSpace: EmbeddingSpace,
   ) {
     this.#embeddingSpace = embeddingSpace;
@@ -70,6 +74,7 @@ export class Engine {
     this.#core = core;
     this.#persister = persister;
     this.#texts = texts;
+    this.#metadata = metadata;
     // When rehydrating a persisted index, resume auto-ids past any restored
     // `auto-N` keys so fresh inserts don't collide with existing entries.
     for (const key of texts.keys()) {
@@ -112,6 +117,7 @@ export class Engine {
 
     const core = options.core ?? (await Engine.#defaultCore(dims));
     const texts = options.initialTexts ?? new Map<string, string>();
+    const metadata = options.initialMetadata ?? new Map<string, Metadata>();
 
     // Replay the write-ahead log on top of the checkpoint, in order, before the
     // engine exists (so auto-id resumption below sees replayed ids too). These
@@ -126,13 +132,17 @@ export class Engine {
         }
         core.insert(record.id, record.vector);
         texts.set(record.id, record.text);
+        // scanWal only returns records whose metadata parses to a JSON object.
+        if (record.metadataJson === undefined) metadata.delete(record.id);
+        else metadata.set(record.id, JSON.parse(record.metadataJson) as Metadata);
       } else {
         core.remove(record.id);
         texts.delete(record.id);
+        metadata.delete(record.id);
       }
     }
 
-    return new Engine(embedder, core, options.persister ?? NO_PERSIST, texts, embeddingSpace);
+    return new Engine(embedder, core, options.persister ?? NO_PERSIST, texts, metadata, embeddingSpace);
   }
 
   /** The embedding model, dimensionality, and metric this engine's vectors live in. */
@@ -156,6 +166,14 @@ export class Engine {
    * with the id used only once the mutation is durable per the persister's
    * durability mode — the resolution *is* the acknowledgement.
    *
+   * `metadata` (a JSON-serialisable plain object) is stored beside the text and
+   * returned on {@link query} hits and {@link list} rows, as
+   * `JSON.parse(JSON.stringify(metadata))`. It replaces, never merges: an
+   * upsert without `metadata` clears the document's previous metadata. Checked
+   * before anything is embedded: a value that is not a plain object or holds a
+   * function, symbol, BigInt or cycle throws `TypeError`; one whose JSON is
+   * over 64 KiB of UTF-8 throws `RangeError('metadata too large')`.
+   *
    * If the write-ahead log append rejects (quota, oversized id, ...) the
    * rejection is rethrown, and:
    * - a **new** id is exactly-once: the item is rolled back out of memory, so
@@ -164,22 +182,38 @@ export class Engine {
    *   stay in memory and become durable at the next successful checkpoint, even
    *   though this call rejected.
    */
-  async insert(text: string, id?: string): Promise<string> {
+  async insert(text: string, id?: string, metadata?: Metadata): Promise<string> {
+    const metadataJson = metadata === undefined ? undefined : serializeMetadata(metadata);
     const key = id ?? `auto-${this.#autoId++}`;
     const vector = await this.#embedder.embed(text);
     const isNew = !this.#texts.has(key);
     this.#core.insert(key, vector);
     this.#texts.set(key, text);
+    // Keep a parsed copy, never the caller's object: what is held is exactly
+    // what the log and the next snapshot record.
+    if (metadataJson === undefined) this.#metadata.delete(key);
+    else this.#metadata.set(key, JSON.parse(metadataJson) as Metadata);
     try {
-      await this.#persister.append({ kind: 'insert', id: key, vector, text });
+      await this.#persister.append(
+        metadataJson === undefined
+          ? { kind: 'insert', id: key, vector, text }
+          : { kind: 'insert', id: key, vector, text, metadataJson },
+      );
     } catch (err) {
       if (isNew) {
         this.#core.remove(key);
         this.#texts.delete(key);
+        this.#metadata.delete(key);
       }
       throw err;
     }
     return key;
+  }
+
+  /** `{ metadata }` (a copy the caller may mutate) when `id` has any, else `{}`. */
+  #metadataOf(id: string): { metadata?: Metadata } {
+    const m = this.#metadata.get(id);
+    return m === undefined ? {} : { metadata: structuredClone(m) };
   }
 
   /** Embed `text` and return the `k` nearest stored items, nearest first. */
@@ -189,6 +223,7 @@ export class Engine {
     return hits.map((hit) => ({
       id: hit.id,
       text: this.#texts.get(hit.id),
+      ...this.#metadataOf(hit.id),
       score: 1 - hit.distance,
     }));
   }
@@ -203,6 +238,7 @@ export class Engine {
    */
   async remove(id: string): Promise<boolean> {
     this.#texts.delete(id);
+    this.#metadata.delete(id);
     const removed = this.#core.remove(id);
     if (removed) await this.#persister.append({ kind: 'remove', id });
     return removed;
@@ -214,7 +250,8 @@ export class Engine {
   }
 
   /**
-   * Enumerate stored documents as `{ id, text }`, one page at a time.
+   * Enumerate stored documents as `{ id, text, metadata? }`, one page at a time
+   * (`metadata` only for documents that have it).
    *
    * Order is **insertion order**: a document is placed when its id is first
    * inserted, an upsert of an existing id keeps that original position (only
@@ -242,23 +279,24 @@ export class Engine {
     let index = 0;
     for (const [id, text] of this.#texts) {
       if (index++ < offset) continue;
-      out.push({ id, text });
+      out.push({ id, text, ...this.#metadataOf(id) });
       if (out.length >= limit) break;
     }
     return out;
   }
 
   /**
-   * Produce the full snapshot contents — serialized vectors, the id→text
-   * sidecar, and the self-describing meta (embedding space, live count). The
-   * persistence store binds this as its source and frames it (with its own
-   * commit sequence) into the on-disk FVS2 blob. `texts` is the live map, so
-   * the caller must encode it synchronously.
+   * Produce the full snapshot contents — serialized vectors, the id→text and
+   * id→metadata sidecars, and the self-describing meta (embedding space, live
+   * count). The persistence store binds this as its source and frames it (with
+   * its own commit sequence) into the on-disk FVS2 blob. `texts` and
+   * `metadata` are the live maps, so the caller must encode them synchronously.
    */
   snapshot(): SnapshotSource {
     return {
       core: this.#core.toBytes(),
       texts: this.#texts,
+      metadata: this.#metadata,
       meta: {
         embeddingSpace: { ...this.#embeddingSpace },
         count: this.#core.len(),

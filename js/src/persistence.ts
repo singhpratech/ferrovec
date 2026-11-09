@@ -607,7 +607,7 @@ export class SlotStore implements PersistentStore {
     // Everything the snapshot will contain must be durable in the log first: if
     // (a) is torn, open falls back to the older slot and replays this log.
     this.#flushWal();
-    const { core, texts, meta } = this.#source();
+    const { core, texts, metadata, meta } = this.#source();
 
     if (meta.count === 0 && this.#onDiskCount > 0 && this.#removesSinceOpen === 0) {
       throw new EmptyOverwriteRefusedError(this.#onDiskCount);
@@ -615,7 +615,7 @@ export class SlotStore implements PersistentStore {
 
     // (a) the snapshot.
     const sequence = this.#nextSequence;
-    const bytes = encodeSnapshot(core, texts, { sequence, meta });
+    const bytes = encodeSnapshot(core, texts, { sequence, meta }, metadata);
     const target = this.#handles[this.#target];
     const written = target.write(bytes, { at: 0 });
     if (written !== bytes.length) {

@@ -99,6 +99,7 @@ import { EmbeddingSpaceMismatchError } from './errors.ts';
 import type { EmbeddingSpace, SnapshotMeta } from './snapshot.ts';
 import { createCoreFromBytes } from './core-loader.ts';
 import type { Engine } from './engine.ts';
+import { serializeMetadata, type Metadata } from './metadata.ts';
 import type { Durability, ListOptions, QueryResult, StoredDocument, VectorCore } from './types.ts';
 import type { WalRecord } from './wal.ts';
 
@@ -111,6 +112,8 @@ export interface LeaderInit {
   core?: VectorCore;
   /** Rehydrated id→text sidecar, paired with {@link core}. */
   initialTexts?: Map<string, string>;
+  /** Rehydrated id→metadata sidecar (documents with metadata only), paired with {@link core}. */
+  initialMetadata?: Map<string, Metadata>;
   /** Self-description of the rehydrated snapshot (`null` for legacy/none). */
   initialMeta?: SnapshotMeta | null;
   /**
@@ -182,6 +185,8 @@ type Op = 'insert' | 'query' | 'remove' | 'size' | 'list' | 'flush';
 interface OpArgs {
   text?: string;
   docId?: string;
+  /** `insert` only; crosses the channel by structured clone, serialised by the leader's engine. */
+  metadata?: Metadata;
   k?: number;
   offset?: number;
   limit?: number;
@@ -374,8 +379,13 @@ export class Coordinator {
     return this.#persistent;
   }
 
-  async insert(text: string, docId?: string): Promise<string> {
-    return this.#route('insert', { text, docId }) as Promise<string>;
+  /** Insert (upsert) `text` with optional `metadata` (see {@link Engine.insert}). */
+  async insert(text: string, docId?: string, metadata?: Metadata): Promise<string> {
+    // A follower checks locally so a bad value fails with the engine's
+    // TypeError/RangeError instead of a DataCloneError (or a leader round
+    // trip); the leader's engine checks again when it serialises.
+    if (metadata !== undefined && this.#role === 'follower') serializeMetadata(metadata);
+    return this.#route('insert', metadata === undefined ? { text, docId } : { text, docId, metadata }) as Promise<string>;
   }
 
   async query(text: string, k: number): Promise<QueryResult[]> {
@@ -662,9 +672,11 @@ export class Coordinator {
 
       let core: VectorCore | undefined;
       let initialTexts: Map<string, string> | undefined;
+      let initialMetadata: Map<string, Metadata> | undefined;
       if (snap && snap.core.length > 0) {
         core = await createCoreFromBytes(snap.core);
         initialTexts = snap.texts;
+        initialMetadata = snap.metadata;
       }
 
       // The log replay happens inside Engine.create, so a replay that cannot
@@ -673,6 +685,7 @@ export class Coordinator {
       const engine = await this.#makeEngine({
         core,
         initialTexts,
+        initialMetadata,
         initialMeta: snap?.meta ?? null,
         replay: store.initialReplay,
         persister: store,
@@ -760,7 +773,7 @@ export class Coordinator {
     if (!engine) throw new Error('store engine is not open');
     switch (op) {
       case 'insert':
-        return engine.insert(args.text ?? '', args.docId);
+        return engine.insert(args.text ?? '', args.docId, args.metadata);
       case 'query':
         return engine.query(args.text ?? '', args.k ?? 5);
       case 'remove':

@@ -5,6 +5,7 @@
  */
 
 import type { Role } from './coordinator.ts';
+import type { Metadata } from './metadata.ts';
 import type { Device, Durability, QueryResult, StoredDocument } from './types.ts';
 
 export type RequestId = number;
@@ -28,6 +29,11 @@ export interface InsertRequest {
   type: 'insert';
   text: string;
   docId?: string;
+  /**
+   * JSON-serialisable metadata, passed by structured clone; the worker
+   * serialises it once (for the write-ahead log and the size cap).
+   */
+  metadata?: Metadata;
 }
 export interface QueryRequest {
   id: RequestId;

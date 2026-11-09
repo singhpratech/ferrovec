@@ -1,6 +1,6 @@
 {
   "name": "ferrovec",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "The in-browser vector store that remembers: transformers.js embeddings over a Rust/wasm HNSW core, persisted to OPFS and kept consistent across tabs. Three-line API.",
   "license": "MIT",
@@ -25,6 +25,10 @@
     },
     "./worker": {
       "import": "./dist/worker.js"
+    },
+    "./langchain": {
+      "types": "./dist/langchain.d.ts",
+      "import": "./dist/langchain.js"
     }
   },
   "files": [
@@ -47,7 +51,16 @@
   "dependencies": {
     "@huggingface/transformers": "^4"
   },
+  "peerDependencies": {
+    "@langchain/core": "^1"
+  },
+  "peerDependenciesMeta": {
+    "@langchain/core": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@langchain/core": "^1.3.5",
     "playwright": "^1.61.1",
     "tsup": "^8",
     "typescript": "^5"

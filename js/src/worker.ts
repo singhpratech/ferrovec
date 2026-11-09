@@ -50,12 +50,13 @@ async function open(request: Extract<WorkerRequest, { type: 'open' }>): Promise<
     persist: request.persist,
     durability: request.durability,
     expectedModel: request.model ?? DEFAULT_MODEL,
-    makeEngine: ({ core, initialTexts, initialMeta, replay, persister }) =>
+    makeEngine: ({ core, initialTexts, initialMetadata, initialMeta, replay, persister }) =>
       Engine.create({
         model: request.model,
         device: request.device,
         core,
         initialTexts,
+        initialMetadata,
         initialMeta,
         replay,
         persister,
@@ -77,7 +78,7 @@ async function handle(request: WorkerRequest): Promise<unknown> {
       return { ready: true, persistent: coordinator.persistent, role: coordinator.role };
     }
     case 'insert':
-      return { id: await requireStore().insert(request.text, request.docId) };
+      return { id: await requireStore().insert(request.text, request.docId, request.metadata) };
     case 'query':
       return requireStore().query(request.text, request.k);
     case 'remove':

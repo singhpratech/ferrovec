@@ -186,3 +186,95 @@ test('legacy raw core bytes ("FVEC" magic, no framing) decode as formatVersion 1
   assert.equal(d.core.length, 80);
   assert.equal(d.texts.size, 0);
 });
+
+/** The texts section of an FVS2 blob, decoded as JSON (`null` when empty). */
+function textsSection(bytes: Uint8Array): unknown {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const textsLen = view.getUint32(24, false);
+  if (textsLen === 0) return null;
+  return JSON.parse(new TextDecoder().decode(bytes.subarray(bytes.length - textsLen)));
+}
+
+/** Re-frame `bytes` (an FVS2 blob) with `texts` as its raw texts section, recomputing the crc. */
+function withRawTexts(bytes: Uint8Array, texts: string): Uint8Array {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const oldLen = view.getUint32(24, false);
+  const raw = new TextEncoder().encode(texts);
+  const out = new Uint8Array(bytes.length - oldLen + raw.length);
+  out.set(bytes.subarray(0, bytes.length - oldLen));
+  out.set(raw, bytes.length - oldLen);
+  const outView = new DataView(out.buffer);
+  outView.setUint32(24, raw.length, false);
+  outView.setUint32(28, new Crc32().update(out.subarray(0, 28)).update(out.subarray(32)).digest(), false);
+  return out;
+}
+
+test('metadata: a 2-/3-tuple mix round-trips; only documents with metadata are written as 3-tuples', () => {
+  const core = fakeCore(200);
+  const texts = new Map([
+    ['plain', 'no metadata here'],
+    ['tagged', 'has metadata'],
+    ['empty-meta', 'metadata is an empty object'],
+    ['unicode', 'café'],
+  ]);
+  const metadata = new Map<string, Record<string, unknown>>([
+    ['tagged', { source: 'note', addedAt: 1_700_000_000_000, tags: ['x', 'y'], nested: { deep: [1, null, true] } }],
+    ['empty-meta', {}],
+    ['unicode', { title: '東京 🚀', 'key with spaces': 'ü' }],
+    ['not-a-document', { ignored: true }], // no text → not written
+  ]);
+  const bytes = encodeSnapshot(core, texts, { sequence: 4n, meta: META }, metadata);
+
+  assert.deepEqual(textsSection(bytes), [
+    ['plain', 'no metadata here'],
+    ['tagged', 'has metadata', metadata.get('tagged')],
+    ['empty-meta', 'metadata is an empty object', {}],
+    ['unicode', 'café', metadata.get('unicode')],
+  ]);
+
+  const d = decodeSnapshot(bytes);
+  assert.deepEqual([...d.texts], [...texts], 'texts and their order are unchanged');
+  assert.deepEqual(
+    [...d.metadata],
+    [...metadata].filter(([id]) => id !== 'not-a-document'),
+  );
+  assert.equal(d.metadata.has('plain'), false);
+});
+
+test('metadata: without any, the texts section is exactly the 0.4 shape; 0.4 sections decode with no metadata', () => {
+  const core = fakeCore(64);
+  const texts = new Map([
+    ['a', 'one'],
+    ['b', 'two'],
+  ]);
+  const without = encodeSnapshot(core, texts, { sequence: 1n, meta: META });
+  const emptyMap = encodeSnapshot(core, texts, { sequence: 1n, meta: META }, new Map());
+  assert.deepEqual(without, emptyMap);
+  // What 0.4 wrote: JSON.stringify([...texts.entries()]).
+  assert.equal(
+    new TextDecoder().decode(without.subarray(without.length - new DataView(without.buffer).getUint32(24, false))),
+    JSON.stringify([...texts.entries()]),
+  );
+  const d = decodeSnapshot(without);
+  assert.deepEqual([...d.texts], [...texts]);
+  assert.equal(d.metadata.size, 0);
+  // Legacy inputs carry no metadata either.
+  assert.equal(decodeSnapshot(fakeCore(80)).metadata.size, 0);
+});
+
+test('metadata: malformed tuples in the texts section are bad-texts', () => {
+  const base = encodeSnapshot(fakeCore(64), new Map([['a', 'one']]), { sequence: 1n, meta: META });
+  // Sanity: the re-framer produces a decodable blob for a well-formed section.
+  assert.deepEqual([...decodeSnapshot(withRawTexts(base, '[["a","one",{"k":1}]]')).metadata], [['a', { k: 1 }]]);
+  for (const texts of [
+    '[["a","one",null]]',
+    '[["a","one",[1]]]',
+    '[["a","one","{\\"k\\":1}"]]',
+    '[["a","one",7]]',
+    '[["a","one",{},{}]]',
+    '[["a"]]',
+    '[["a",1,{}]]',
+  ]) {
+    assertCorrupt(() => decodeSnapshot(withRawTexts(base, texts)), 'bad-texts', texts);
+  }
+});

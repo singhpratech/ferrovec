@@ -5,6 +5,7 @@
  * {@link Engine} testable in plain Node with injected fakes.
  */
 
+import type { Metadata } from './metadata.ts';
 import type { SnapshotMeta } from './snapshot.ts';
 import type { WalRecord } from './wal.ts';
 
@@ -72,6 +73,8 @@ export interface QueryResult {
   id: string;
   /** The original text, if it is still known to the engine. */
   text?: string;
+  /** The metadata the document was inserted with; absent when it has none. */
+  metadata?: Metadata;
   /**
    * Similarity score, higher is closer. Derived from the core's distance as
    * `1 - distance`; for the default cosine metric on normalized vectors this is
@@ -98,6 +101,8 @@ export interface StoredDocument {
   id: string;
   /** The original text it was inserted with (its latest text, after an upsert). */
   text: string;
+  /** The metadata of its latest insert; absent when that insert had none. */
+  metadata?: Metadata;
 }
 
 /**
@@ -153,6 +158,11 @@ export interface EngineCreateOptions {
    */
   initialTexts?: Map<string, string>;
   /**
+   * Seed the id→metadata sidecar when rehydrating, paired with
+   * {@link initialTexts} (only documents that have metadata appear).
+   */
+  initialMetadata?: Map<string, Metadata>;
+  /**
    * The self-description of the persisted snapshot an injected {@link core} was
    * rehydrated from, if any. Used only to name the stored model when the core's
    * dimensionality does not match the embedder's.
@@ -161,8 +171,8 @@ export interface EngineCreateOptions {
   /**
    * Write-ahead-log records to apply, in order, on top of the injected (or
    * fresh) core before the engine is returned — the mutations acknowledged
-   * after the last checkpoint. Applied directly to the core and the text
-   * sidecar with **no** persister calls (they are already durable). A logged
+   * after the last checkpoint. Applied directly to the core and the text and
+   * metadata sidecars with **no** persister calls (they are already durable). A logged
    * vector whose width is not the engine's dims throws `WalCorruptError`.
    */
   replay?: WalRecord[];

@@ -50,7 +50,20 @@ const RECORDS: WalRecord[] = [
   { kind: 'remove', id: 'cat' },
   { kind: 'insert', id: '', vector: vec(3), text: '' },
   { kind: 'remove', id: 'ключ-🔑' },
-  { kind: 'insert', id: 'last', vector: vec(4), text: 'the final record in the log' },
+  {
+    kind: 'insert',
+    id: 'meta',
+    vector: vec(5),
+    text: 'a document with metadata',
+    metadataJson: JSON.stringify({ source: 'note', tags: ['a', 'ü'], n: 1, nested: { ok: true } }),
+  },
+  {
+    kind: 'insert',
+    id: 'last',
+    vector: vec(4),
+    text: 'the final record in the log, with metadata',
+    metadataJson: '{"page":7}',
+  },
 ];
 
 function concat(parts: Uint8Array[]): Uint8Array {
@@ -210,6 +223,8 @@ test('records round-trip: inserts and removes, unicode ids and texts, 32-dim vec
     assert.equal(got.id, want.id);
     if (want.kind === 'insert' && got.kind === 'insert') {
       assert.equal(got.text, want.text);
+      assert.equal(got.metadataJson, want.metadataJson);
+      assert.equal('metadataJson' in got, want.metadataJson !== undefined, 'no metadata → no key');
       assert.deepEqual(Array.from(got.vector), Array.from(want.vector));
     }
   }
@@ -277,4 +292,116 @@ test('the model id is bounded to 256 UTF-8 bytes: encode throws above it, decode
     assert.equal(declaredWalHeaderLength(bytes.subarray(0, 40)), null, `modelLen ${modelLen}, short file`);
     assert.throws(() => decodeWalHeader(bytes), isBadHeader, `modelLen ${modelLen}`);
   }
+});
+
+/** Frame a raw payload as `payloadLen ‖ crc32(payload) ‖ payload` (a CRC-valid record). */
+function frame(payload: Uint8Array): Uint8Array {
+  const out = new Uint8Array(8 + payload.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, payload.length, true);
+  view.setUint32(4, crc32(payload), true);
+  out.set(payload, 8);
+  return out;
+}
+
+/** The payload of an encoded record (everything after its 8-byte prefix). */
+function payloadOf(record: WalRecord): Uint8Array {
+  return encodeWalRecord(record, DIMS).slice(8);
+}
+
+test('kind 3: an insert with metadata is kind 3 with a trailing u32 metaLen + JSON; without metadata it stays kind 1', () => {
+  const metadataJson = JSON.stringify({ source: 'note', addedAt: 1_700_000_000_000, title: 'café 🦀' });
+  const withMeta = payloadOf({ kind: 'insert', id: 'm', vector: vec(9), text: 'hello', metadataJson });
+  const plain = payloadOf({ kind: 'insert', id: 'm', vector: vec(9), text: 'hello' });
+  assert.equal(withMeta[0], 3, 'kind 3 = insert with metadata');
+  assert.equal(plain[0], 1, 'kind 1 = insert (unchanged)');
+  const metaBytes = new TextEncoder().encode(metadataJson);
+  assert.equal(withMeta.length, plain.length + 4 + metaBytes.length, 'kind 1 layout + u32 metaLen + JSON');
+  assert.deepEqual(withMeta.subarray(1, plain.length), plain.subarray(1), 'same id/vector/text layout as kind 1');
+  const view = new DataView(withMeta.buffer, withMeta.byteOffset, withMeta.byteLength);
+  assert.equal(view.getUint32(plain.length, true), metaBytes.length, 'u32 metaLen, little-endian');
+  assert.deepEqual(withMeta.subarray(plain.length + 4), metaBytes);
+
+  const header = encodeWalHeader({ baseSequence: 0n, dims: DIMS, model: MODEL });
+  const scan = scanWal(concat([header, frame(withMeta), frame(plain)]), DIMS);
+  assert.equal(scan.truncatedTail, false);
+  assert.equal(scan.records.length, 2);
+  const [a, b] = scan.records;
+  assert.ok(a?.kind === 'insert' && b?.kind === 'insert');
+  assert.equal(a.metadataJson, metadataJson);
+  assert.deepEqual(JSON.parse(a.metadataJson!), JSON.parse(metadataJson));
+  assert.equal(a.text, 'hello');
+  assert.equal(b.metadataJson, undefined, 'a kind-1 record decodes with no metadata');
+  assert.equal('metadataJson' in b, false);
+});
+
+test('kind 1 records written by 0.4 still decode (hand-built bytes, no metadata)', () => {
+  // kind 1 exactly as 0.4 encoded it: u8 1, u16 idLen, id, f32[dims], u32 textLen, text.
+  const id = new TextEncoder().encode('old');
+  const text = new TextEncoder().encode('written by 0.4');
+  const v = vec(11);
+  const payload = new Uint8Array(1 + 2 + id.length + DIMS * 4 + 4 + text.length);
+  const view = new DataView(payload.buffer);
+  let off = 0;
+  view.setUint8(off, 1);
+  view.setUint16((off += 1), id.length, true);
+  payload.set(id, (off += 2));
+  off += id.length;
+  for (let i = 0; i < DIMS; i++, off += 4) view.setFloat32(off, v[i]!, true);
+  view.setUint32(off, text.length, true);
+  payload.set(text, off + 4);
+  const header = encodeWalHeader({ baseSequence: 3n, dims: DIMS, model: MODEL });
+  const scan = scanWal(concat([header, frame(payload)]), DIMS);
+  assert.equal(scan.records.length, 1);
+  const rec = scan.records[0]!;
+  assert.ok(rec.kind === 'insert');
+  assert.equal(rec.id, 'old');
+  assert.equal(rec.text, 'written by 0.4');
+  assert.equal(rec.metadataJson, undefined);
+  assert.deepEqual(Array.from(rec.vector), Array.from(v));
+});
+
+test('kind 3: a truncated or overlong metaLen, bad JSON, or non-object JSON stops the scan at that record', () => {
+  const header = encodeWalHeader({ baseSequence: 0n, dims: DIMS, model: MODEL });
+  const good = encodeWalRecord(RECORDS[0]!, DIMS);
+  const full = payloadOf({ kind: 'insert', id: 'x', vector: vec(12), text: 'tx', metadataJson: '{"a":1}' });
+  const metaLenAt = full.length - 4 - '{"a":1}'.length;
+
+  const withMetaLen = (metaLen: number): Uint8Array => {
+    const p = full.slice();
+    new DataView(p.buffer).setUint32(metaLenAt, metaLen, true);
+    return p;
+  };
+  const withJson = (json: string): Uint8Array => {
+    const bytes = new TextEncoder().encode(json);
+    const p = new Uint8Array(metaLenAt + 4 + bytes.length);
+    p.set(full.subarray(0, metaLenAt));
+    new DataView(p.buffer).setUint32(metaLenAt, bytes.length, true);
+    p.set(bytes, metaLenAt + 4);
+    return p;
+  };
+  const cases: Array<[string, Uint8Array]> = [
+    // The record (with a correct CRC) ends inside the u32 metaLen field.
+    ...[0, 1, 2, 3].map((n): [string, Uint8Array] => [`metaLen cut to ${n} bytes`, full.slice(0, metaLenAt + n)]),
+    ['metaLen longer than the payload', withMetaLen(8)],
+    ['metaLen shorter than the payload', withMetaLen(3)],
+    ['metaLen 0xffffffff', withMetaLen(0xffffffff)],
+    ['JSON that does not parse', withJson('{"a":')],
+    ['JSON array, not an object', withJson('[1,2]')],
+    ['JSON null', withJson('null')],
+    ['JSON string', withJson('"text"')],
+    ['invalid UTF-8', (() => {
+      const p = withJson('{"a":"xx"}');
+      p[p.length - 3] = 0xff;
+      return p;
+    })()],
+  ];
+  for (const [label, payload] of cases) {
+    const scan = scanWal(concat([header, good, frame(payload), good]), DIMS);
+    assert.equal(scan.records.length, 1, label);
+    assert.equal(scan.validLength, header.length + good.length, label);
+    assert.equal(scan.truncatedTail, true, label);
+  }
+  // Sanity: the untouched payload decodes.
+  assert.equal(scanWal(concat([header, frame(full)]), DIMS).records.length, 1);
 });

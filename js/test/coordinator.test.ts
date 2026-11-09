@@ -215,3 +215,61 @@ test('list(): a follower proxies to the leader and gets the leader\'s documents,
   await follower.close();
   await leader.close();
 });
+
+test('metadata: a follower\'s insert carries it to the leader, and query/list answers carry it back', async (t) => {
+  const locks = new FakeLocks();
+  Object.defineProperty(navigator, 'locks', { value: locks, configurable: true });
+  const RealChannel = globalThis.BroadcastChannel;
+  globalThis.BroadcastChannel = SpyChannel;
+  t.after(() => {
+    delete (navigator as { locks?: unknown }).locks;
+    globalThis.BroadcastChannel = RealChannel;
+    for (const c of channels) if (!c.closed) c.close();
+  });
+
+  const NAME = 'metadata-proxy';
+  const leader = await Coordinator.open({
+    name: NAME,
+    requestTimeoutMs: 200,
+    makeEngine: () => Engine.create({ embedder }),
+  });
+  const follower = await Coordinator.open({
+    name: NAME,
+    requestTimeoutMs: 200,
+    makeEngine: () => Engine.create({ embedder }),
+  });
+  assert.equal(follower.role, 'follower');
+
+  const meta = { source: 'note', addedAt: 1_700_000_000_000, tags: ['a', 'b'] };
+  await follower.insert('from the follower', 'f', meta); // proxied write with metadata
+  await leader.insert('from the leader', 'l', { source: 'leader' });
+  await follower.insert('no metadata', 'n');
+
+  const expected = [
+    { id: 'f', text: 'from the follower', metadata: meta },
+    { id: 'l', text: 'from the leader', metadata: { source: 'leader' } },
+    { id: 'n', text: 'no metadata' },
+  ];
+  assert.deepEqual(await leader.list(), expected, 'the leader stored what the follower sent');
+  assert.deepEqual(await follower.list(), expected, 'and the follower reads it back');
+  const hits = await follower.query('from the follower', 3);
+  assert.deepEqual(hits.find((h) => h.id === 'f')?.metadata, meta);
+  assert.equal('metadata' in hits.find((h) => h.id === 'n')!, false);
+
+  // A proxied upsert without metadata clears it on the leader.
+  await follower.insert('from the follower, again', 'f');
+  assert.deepEqual((await leader.list())[0], { id: 'f', text: 'from the follower, again' });
+
+  // A follower rejects bad metadata itself, with the engine's error types.
+  const big = { k: 'x'.repeat(70_000) };
+  await assert.rejects(follower.insert('too big', 'big', big), (err: unknown) => {
+    assert.ok(err instanceof RangeError);
+    assert.equal(err.message, 'metadata too large');
+    return true;
+  });
+  await assert.rejects(follower.insert('fn', 'fn', { f: () => 1 }), TypeError);
+  assert.equal(await leader.size(), 3, 'neither reached the leader');
+
+  await follower.close();
+  await leader.close();
+});

@@ -64,16 +64,26 @@ Full surface:
 
 ```ts
 const id = await db.insert('some text', { id: 'doc-1' }); // explicit id (upsert)
+await db.insert('more text', { id: 'doc-2', metadata: { source: 'notes.md' } }); // with metadata
 const hits = await db.query('query text', 10);            // k nearest, nearest-first
 await db.remove('doc-1');                                 // → boolean
 await db.size();                                          // → number of live items
-const docs = await db.list({ offset: 0, limit: 100 });    // → [{ id, text }, ...] in insertion order
+const docs = await db.list({ offset: 0, limit: 100 });    // → [{ id, text, metadata? }, ...] in insertion order
 await db.flush();                                         // force log flush + checkpoint
 await db.close();                                         // final checkpoint + terminate worker
 ```
 
-Each hit is `{ id: string; text?: string; score: number }`, where `score` is
-cosine similarity (higher = closer, ≈1 for near-duplicates).
+Each hit is `{ id: string; text?: string; metadata?: Record<string, unknown>; score: number }`,
+where `score` is cosine similarity (higher = closer, ≈1 for near-duplicates).
+
+`metadata` (since `0.5.0`) is a JSON-serialisable plain object stored beside
+the text, with the same durability (write-ahead log and snapshot). It comes
+back on query hits and `list()` rows, and is absent on documents inserted
+without it. It replaces rather than merges: re-inserting an id without
+`metadata` clears that id's metadata. Its JSON may be at most 64 KiB; larger
+values reject with `RangeError('metadata too large')`, and values JSON cannot
+represent (functions, BigInt, cycles) reject with a `TypeError`. Do not reopen
+a store that holds metadata with `0.4.x`, which cannot read those records.
 
 `db.list()` pages through the stored documents in insertion order (an upsert
 keeps its original position, removed documents never appear, and the order is
@@ -325,6 +335,26 @@ The worker (`dist/worker.js`) and the wasm core (`dist/core/`) are shipped in th
 package and resolved relative to the module URL, so no extra copy step is needed.
 If your bundler does not support the `new URL(..., import.meta.url)` worker
 pattern, point it at the published `ferrovec/worker` entry.
+
+## LangChain.js
+
+From `0.5.0`, `ferrovec/langchain` exports `FerrovecVectorStore`, a LangChain
+`VectorStore` (needs `@langchain/core` 1.x, an optional peer dependency):
+
+```ts
+import { FerrovecVectorStore } from 'ferrovec/langchain';
+
+const store = await FerrovecVectorStore.open('notes');  // or new FerrovecVectorStore(db)
+await store.addDocuments([{ pageContent: 'the cat sat on the mat', metadata: { source: 'a.md' } }]);
+const docs = await store.similaritySearch('a napping kitten', 4, { source: 'a.md' });
+const retriever = store.asRetriever(4);
+```
+
+ferrovec embeds inside its worker, so the store needs no LangChain
+`embeddings`, and `addVectors` / `similaritySearchVectorWithScore` throw. The
+`filter` is exact match on top-level metadata keys, applied to the nearest
+`min(k * 4, k + 50)` hits, so a narrow filter can return fewer than `k`.
+`delete({ ids })` removes documents.
 
 ## Advanced / Node usage
 

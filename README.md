@@ -289,7 +289,25 @@ const restored = FerrovecCore.fromBytes(bytes);
 > (**M3**), crash-safe OPFS persistence (**M4**, **M7**), and cross-tab leader election (**M6**), so the browser API becomes:
 > `const db = await Ferrovec.open('notes'); await db.insert(text); const hits = await db.query('…', 5);`
 > — live on npm as `0.4.0`. `await db.list({ offset, limit })` pages through the stored `{ id, text }`
-> documents in insertion order.
+> documents in insertion order. From `0.5.0`, `db.insert(text, { id, metadata })` stores a JSON object
+> beside the text (as durable as the text, at most 64 KiB) and returns it on query hits and `list()` rows;
+> an upsert without `metadata` clears it.
+
+### LangChain.js
+
+From `0.5.0`, `ferrovec/langchain` exports `FerrovecVectorStore`, a LangChain `VectorStore` (needs
+`@langchain/core` 1.x, an optional peer dependency):
+
+```ts
+import { FerrovecVectorStore } from 'ferrovec/langchain';
+
+const store = await FerrovecVectorStore.open('notes');
+await store.addDocuments([{ pageContent: 'the cat sat on the mat', metadata: { source: 'a.md' } }]);
+const docs = await store.asRetriever(4).invoke('a napping kitten');
+```
+
+Embedding happens inside ferrovec's worker, so no LangChain `embeddings` are needed and the raw-vector
+methods throw. `similaritySearch(query, k, filter)` filters by exact match on top-level metadata keys.
 
 To smoke-test WASM compatibility without packaging:
 

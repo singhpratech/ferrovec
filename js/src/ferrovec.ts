@@ -7,6 +7,7 @@
  */
 
 import type { Role } from './coordinator.ts';
+import type { Metadata } from './metadata.ts';
 import type {
   FlushResult,
   InsertResult,
@@ -63,6 +64,14 @@ export interface FerrovecOptions {
 export interface InsertOptions {
   /** Explicit id to store under. Auto-generated when omitted. */
   id?: string;
+  /**
+   * A JSON-serialisable plain object stored beside the text and returned on
+   * {@link Ferrovec.query} hits and {@link Ferrovec.list} rows. It is as
+   * durable as the text (write-ahead log and snapshot). Replaces, never
+   * merges: re-inserting an id without `metadata` clears its metadata. Its
+   * JSON may be at most 64 KiB of UTF-8.
+   */
+  metadata?: Metadata;
 }
 
 interface Pending {
@@ -217,17 +226,42 @@ export class Ferrovec {
     const request = { ...payload, id } as WorkerRequest;
     return new Promise<T>((resolve, reject) => {
       this.#pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
-      this.#worker.postMessage(request);
+      try {
+        this.#worker.postMessage(request);
+      } catch (err) {
+        // Not structured-cloneable (e.g. a function inside insert metadata):
+        // nothing reached the worker, so no response will ever come.
+        this.#pending.delete(id);
+        reject(
+          err instanceof Error && err.name === 'DataCloneError'
+            ? new TypeError(`[ferrovec] request cannot be sent to the worker: ${err.message}`)
+            : err,
+        );
+      }
     });
   }
 
-  /** Embed and index `text`, returning the id it was stored under. */
+  /**
+   * Embed and index `text` (with optional `metadata`), returning the id it was
+   * stored under. Re-inserting an existing id replaces its text, vector and
+   * metadata.
+   *
+   * Metadata that is not a plain object or holds a function, symbol, BigInt or
+   * cycle rejects with a `TypeError` (or an `Error` named `'TypeError'` when
+   * the worker detects it); JSON over 64 KiB rejects with an `Error` named
+   * `'RangeError'` (`metadata too large`). Either way nothing is stored.
+   */
   async insert(text: string, options: InsertOptions = {}): Promise<string> {
-    const result = await this.#send<InsertResult>({ type: 'insert', text, docId: options.id });
+    const result = await this.#send<InsertResult>({
+      type: 'insert',
+      text,
+      docId: options.id,
+      ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
+    });
     return result.id;
   }
 
-  /** Return the `k` nearest stored items to `text`. */
+  /** Return the `k` nearest stored items to `text`, each with its `metadata` when it has any. */
   query(text: string, k = 5): Promise<QueryResult[]> {
     return this.#send<QueryResult[]>({ type: 'query', text, k });
   }
@@ -245,7 +279,8 @@ export class Ferrovec {
   }
 
   /**
-   * Enumerate stored documents as `{ id, text }`, a page at a time.
+   * Enumerate stored documents as `{ id, text, metadata? }`, a page at a time
+   * (`metadata` only on documents that have it).
    *
    * Order is insertion order: a document keeps the position of its id's first
    * insert (an upsert changes its text, not its position), and an id removed

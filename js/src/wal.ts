@@ -23,10 +23,19 @@
  *   u32 payloadLen
  *   u32 payloadCrc = crc32(payload)
  *   payload:
- *     u8  kind                     1 = insert (upsert), 2 = remove
+ *     u8  kind                     1 = insert (upsert), 2 = remove,
+ *                                  3 = insert (upsert) with metadata
  *     u16 idLen, id UTF-8
- *     insert only: f32[dims] vector, u32 textLen, text UTF-8
+ *     kinds 1 and 3: f32[dims] vector, u32 textLen, text UTF-8
+ *     kind 3 only:   u32 metaLen, metadata UTF-8 JSON (a JSON object), metaLen bytes
  * ```
+ *
+ * Kind 3 was added in 0.5.0 for per-document metadata; the header and kinds 1
+ * and 2 are unchanged, so a 0.5 reader replays every log 0.4 wrote. An insert
+ * without metadata is still written as kind 1. A 0.4 reader treats the first
+ * kind-3 record as a torn tail (an unknown kind does not parse): it keeps the
+ * records before it and truncates the log there, dropping that record and
+ * everything after it. Do not reopen a store that has logged metadata with 0.4.
  *
  * The model id lets a store whose data lives only in the log (killed before
  * its first checkpoint) refuse to be reopened with a different embedding model
@@ -51,10 +60,15 @@
 
 import { crc32 } from './crc32.ts';
 import { WalCorruptError } from './errors.ts';
+import { isPlainJsonObject } from './metadata.ts';
 
-/** One logged mutation. `insert` is an upsert, exactly like `Engine.insert`. */
+/**
+ * One logged mutation. `insert` is an upsert, exactly like `Engine.insert`.
+ * `metadataJson` is the document's metadata serialised as a JSON object;
+ * absent means the document has none (the insert clears any earlier metadata).
+ */
 export type WalRecord =
-  | { kind: 'insert'; id: string; vector: Float32Array; text: string }
+  | { kind: 'insert'; id: string; vector: Float32Array; text: string; metadataJson?: string }
   | { kind: 'remove'; id: string };
 
 /** The decoded log header. */
@@ -97,6 +111,7 @@ const MAGIC = [0x46, 0x56, 0x57, 0x32] as const;
 const VERSION = 2;
 const KIND_INSERT = 1;
 const KIND_REMOVE = 2;
+const KIND_INSERT_META = 3;
 const MAX_ID_BYTES = 0xffff;
 
 const encoder = new TextEncoder();
@@ -190,6 +205,7 @@ export function encodeWalRecord(rec: WalRecord, dims: number): Uint8Array {
   }
   let payloadLen = 1 + 2 + id.length;
   let text: Uint8Array | null = null;
+  let meta: Uint8Array | null = null;
   if (rec.kind === 'insert') {
     if (rec.vector.length !== dims) {
       throw new RangeError(
@@ -198,12 +214,16 @@ export function encodeWalRecord(rec: WalRecord, dims: number): Uint8Array {
     }
     text = encoder.encode(rec.text);
     payloadLen += dims * 4 + 4 + text.length;
+    if (rec.metadataJson !== undefined) {
+      meta = encoder.encode(rec.metadataJson);
+      payloadLen += 4 + meta.length;
+    }
   }
 
   const out = new Uint8Array(RECORD_PREFIX_LEN + payloadLen);
   const view = new DataView(out.buffer);
   let off = RECORD_PREFIX_LEN;
-  view.setUint8(off, rec.kind === 'insert' ? KIND_INSERT : KIND_REMOVE);
+  view.setUint8(off, rec.kind === 'remove' ? KIND_REMOVE : meta ? KIND_INSERT_META : KIND_INSERT);
   off += 1;
   view.setUint16(off, id.length, true);
   off += 2;
@@ -214,6 +234,12 @@ export function encodeWalRecord(rec: WalRecord, dims: number): Uint8Array {
     view.setUint32(off, text.length, true);
     off += 4;
     out.set(text, off);
+    off += text.length;
+    if (meta) {
+      view.setUint32(off, meta.length, true);
+      off += 4;
+      out.set(meta, off);
+    }
   }
   view.setUint32(0, payloadLen, true);
   view.setUint32(4, crc32(out.subarray(RECORD_PREFIX_LEN)), true);
@@ -238,20 +264,35 @@ function decodePayload(payload: Uint8Array, dims: number): WalRecord | null {
   if (kind === KIND_REMOVE) {
     return off === payload.length ? { kind: 'remove', id } : null;
   }
-  if (kind !== KIND_INSERT) return null;
+  if (kind !== KIND_INSERT && kind !== KIND_INSERT_META) return null;
   if (off + dims * 4 + 4 > payload.length) return null;
   const vector = new Float32Array(dims);
   for (let i = 0; i < dims; i++, off += 4) vector[i] = view.getFloat32(off, true);
   const textLen = view.getUint32(off, true);
   off += 4;
-  if (off + textLen !== payload.length) return null;
+  if (kind === KIND_INSERT ? off + textLen !== payload.length : off + textLen + 4 > payload.length) return null;
   let text: string;
   try {
     text = decoder.decode(payload.subarray(off, off + textLen));
   } catch {
     return null;
   }
-  return { kind: 'insert', id, vector, text };
+  off += textLen;
+  if (kind === KIND_INSERT) return { kind: 'insert', id, vector, text };
+
+  const metaLen = view.getUint32(off, true);
+  off += 4;
+  if (off + metaLen !== payload.length) return null;
+  let metadataJson: string;
+  try {
+    metadataJson = decoder.decode(payload.subarray(off, off + metaLen));
+    // A record is applied whole or not at all: metadata that does not parse
+    // to a JSON object stops the scan here, like a malformed text would.
+    if (!isPlainJsonObject(JSON.parse(metadataJson))) return null;
+  } catch {
+    return null;
+  }
+  return { kind: 'insert', id, vector, text, metadataJson };
 }
 
 /**

@@ -35,7 +35,9 @@
  * whose first checkpoint was torn (recovered from the log, which is still
  * based on "no snapshot"; refused once the log was reset onto the lost
  * checkpoint), and the model guard for a store killed before its first
- * checkpoint (the log header names the model).
+ * checkpoint (the log header names the model). It also checks that
+ * per-document metadata survives a kill both from the log (kind-3 records)
+ * and from a checkpoint (snapshot 3-tuples) with the log replayed on top.
  *
  * Run with `npm run test:browser`. Skips (does not fail) if Chromium can't launch.
  */
@@ -557,6 +559,42 @@ function walScenario(): Promise<Record<string, unknown>> {
     r.modelUntouched = JSON.stringify(await slots(M)) === JSON.stringify(r.modelSlots);
     r.modelRight = await reopenAndCheck(M, 'm', 10, { model: 'fake-fnv1a-32' });
 
+    // ---- metadata: logged (kind 3), killed, replayed; checkpointed (3-tuples), killed, reopened ----
+    const MD = 'wal-metadata-' + stamp;
+    const META0 = { source: 'note', addedAt: 1_700_000_000_000, tags: ['a', 'é'] };
+    {
+      const w = spawn();
+      await w.call({ type: 'open', name: MD, persist: true });
+      await w.call({ type: 'insert', docId: 'md-0', text: text('md', 0), metadata: META0 });
+      await w.call({ type: 'insert', docId: 'md-1', text: text('md', 1) });
+      await w.call({ type: 'insert', docId: 'md-2', text: text('md', 2), metadata: { nested: { n: 2 } } });
+      w.kill(); // no close: the metadata lives only in the log
+    }
+    r.metadataSlots = await slots(MD);
+    {
+      const w = spawn();
+      await w.call({ type: 'open', name: MD, persist: true });
+      r.metadataFromLog = (await w.call({ type: 'list' })).documents;
+      r.metadataHit = (await w.call({ type: 'query', text: text('md', 0), k: 1 })).results[0];
+      // Change it, checkpoint (snapshot 3-tuples), then log one more on top, and kill.
+      await w.call({ type: 'insert', docId: 'md-1', text: text('md', 1), metadata: { added: true } });
+      await w.call({ type: 'insert', docId: 'md-2', text: text('md', 2) }); // upsert without metadata clears it
+      await w.call({ type: 'flush' });
+      await w.call({ type: 'insert', docId: 'md-3', text: text('md', 3), metadata: { after: 'checkpoint' } });
+      w.kill();
+    }
+    r.metadataSlotsAfterFlush = await slots(MD);
+    {
+      const w = spawn();
+      try {
+        await w.call({ type: 'open', name: MD, persist: true });
+        r.metadataFromSnapshot = (await w.call({ type: 'list' })).documents;
+        await w.call({ type: 'close' });
+      } finally {
+        w.kill();
+      }
+    }
+
     return r;
   })();
 }
@@ -647,6 +685,28 @@ test('durability: acknowledged writes survive a worker kill (WAL replay, checkpo
     assert.equal(r.modelRight.ok, true, `right model must reopen: ${r.modelRight.message}`);
     assert.equal(r.modelRight.size, 10);
     assert.deepEqual(r.modelRight.missing, []);
+
+    // metadata is as durable as the text: through log replay and through a checkpoint
+    const mdText = (i: number): string => r.metadataFromSnapshot[i]?.text;
+    assert.equal(r.metadataSlots.a.size, 0, 'killed before any checkpoint');
+    assert.equal(r.metadataSlots.wal.records, 3);
+    assert.deepEqual(r.metadataFromLog, [
+      { id: 'md-0', text: r.metadataFromLog[0]?.text, metadata: { source: 'note', addedAt: 1_700_000_000_000, tags: ['a', 'é'] } },
+      { id: 'md-1', text: r.metadataFromLog[1]?.text },
+      { id: 'md-2', text: r.metadataFromLog[2]?.text, metadata: { nested: { n: 2 } } },
+    ], 'replayed from kind-3 log records');
+    assert.equal(r.metadataHit.id, 'md-0');
+    assert.deepEqual(r.metadataHit.metadata, { source: 'note', addedAt: 1_700_000_000_000, tags: ['a', 'é'] });
+    assert.equal(r.metadataSlotsAfterFlush.a.sequence, 1, 'flush wrote a checkpoint');
+    assert.equal(r.metadataSlotsAfterFlush.a.count, 3);
+    assert.equal(r.metadataSlotsAfterFlush.wal.records, 1, 'one record logged on top of it');
+    assert.deepEqual(r.metadataFromSnapshot, [
+      { id: 'md-0', text: mdText(0), metadata: { source: 'note', addedAt: 1_700_000_000_000, tags: ['a', 'é'] } },
+      { id: 'md-1', text: mdText(1), metadata: { added: true } },
+      { id: 'md-2', text: mdText(2) },
+      { id: 'md-3', text: mdText(3), metadata: { after: 'checkpoint' } },
+    ], 'checkpoint 3-tuples + the log on top; the cleared metadata stays cleared');
+    assert.match(mdText(3), /^md-3 /);
   } finally {
     await browser.close();
     server.close();

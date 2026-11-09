@@ -20,12 +20,22 @@
  *   28     4     uint32 crc32
  *   32     ...   meta   UTF-8 JSON ({@link SnapshotMeta}), metaLen bytes
  *          ...   core   FerrovecCore.toBytes(), coreLen bytes
- *          ...   texts  UTF-8 JSON of [id, text][] (may be empty), textsLen bytes
+ *          ...   texts  UTF-8 JSON array of [id, text] or [id, text, metadata]
+ *                       tuples (may be empty), textsLen bytes
  * ```
  * `crc32` is IEEE CRC-32 over the whole file with the 4-byte crc field skipped
  * (`bytes[0..28) ++ bytes[32..end)`). The three section lengths must sum to
  * exactly the file length, so truncation *and* trailing garbage are both caught
  * by a cheap length check before the CRC is even computed.
+ *
+ * ## Per-document metadata (0.5.0)
+ * A document with metadata is written as a 3-tuple whose third element is its
+ * metadata as a JSON object (nested, not a string); a document without
+ * metadata stays a 2-tuple, so a store that never used metadata writes the
+ * same texts section 0.4 did. The reader accepts either shape in any mix. The
+ * framing, magic and `formatVersion` are unchanged: 0.5 reads everything 0.4
+ * wrote, and a 0.4 reader rejects a texts section holding any 3-tuple as
+ * `bad-texts` (the whole slot is then unreadable to it).
  *
  * ## Legacy input (read-only migration path)
  * - **FVS1** (`"FVS1"`, uint32 coreLen, core, texts) — the pre-0.4 single-file
@@ -44,6 +54,7 @@
 
 import { Crc32 } from './crc32.ts';
 import { SnapshotCorruptError } from './errors.ts';
+import { isPlainJsonObject, type Metadata } from './metadata.ts';
 
 /** `"FVS2"` as a big-endian uint32. */
 const MAGIC_V2 = 0x46565332;
@@ -61,7 +72,7 @@ const CRC_OFFSET = 28;
  * literal (not read from package.json) so this module stays dependency-free;
  * update it alongside the package version.
  */
-export const SNAPSHOT_WRITER = 'ferrovec-js/0.4.0';
+export const SNAPSHOT_WRITER = 'ferrovec-js/0.5.0';
 
 /** The embedding model + geometry a store's vectors live in. */
 export interface EmbeddingSpace {
@@ -78,7 +89,7 @@ export interface SnapshotMeta {
   embeddingSpace: EmbeddingSpace;
   /** Live items in the index at commit time. */
   count: number;
-  /** Writer identity, e.g. `"ferrovec-js/0.4.0"`. */
+  /** Writer identity, e.g. `"ferrovec-js/0.5.0"`. */
   writer: string;
   /** `Date.now()` at commit. */
   createdAt: number;
@@ -91,6 +102,8 @@ export interface SnapshotMeta {
 export interface SnapshotSource {
   core: Uint8Array;
   texts: Map<string, string>;
+  /** id → metadata, for the documents in {@link texts} that have any. */
+  metadata?: ReadonlyMap<string, Metadata>;
   meta: SnapshotMeta;
 }
 
@@ -104,17 +117,31 @@ export interface DecodedSnapshot {
   meta: SnapshotMeta | null;
   core: Uint8Array;
   texts: Map<string, string>;
+  /** id → metadata for the documents stored as 3-tuples (empty for legacy input). */
+  metadata: Map<string, Metadata>;
 }
 
-/** Frame `core`, `texts`, and the header fields into a single FVS2 blob. */
+/**
+ * Frame `core`, `texts` (with each document's `metadata`, if any), and the
+ * header fields into a single FVS2 blob. Metadata for an id not in `texts` is
+ * ignored.
+ */
 export function encodeSnapshot(
   core: Uint8Array,
   texts: Map<string, string>,
   header: { sequence: bigint; meta: SnapshotMeta },
+  metadata?: ReadonlyMap<string, Metadata>,
 ): Uint8Array {
   const encoder = new TextEncoder();
   const metaBytes = encoder.encode(JSON.stringify(header.meta));
-  const textBytes = encoder.encode(texts.size > 0 ? JSON.stringify([...texts.entries()]) : '');
+  let tuples: Array<[string, string] | [string, string, Metadata]> = [...texts.entries()];
+  if (metadata && metadata.size > 0) {
+    tuples = tuples.map(([id, text]) => {
+      const m = metadata.get(id);
+      return m === undefined ? [id, text] : [id, text, m];
+    });
+  }
+  const textBytes = encoder.encode(texts.size > 0 ? JSON.stringify(tuples) : '');
 
   const out = new Uint8Array(HEADER_LEN + metaBytes.length + core.length + textBytes.length);
   const view = new DataView(out.buffer);
@@ -152,7 +179,7 @@ export function decodeSnapshot(bytes: Uint8Array): DecodedSnapshot {
   if (magic === MAGIC_CORE) {
     if (bytes.length < 8) throw new SnapshotCorruptError('too-short', `${bytes.length} bytes`);
     // Legacy bare core, no sidecar: its texts are simply unknown.
-    return { formatVersion: 1, sequence: 0n, meta: null, core: bytes, texts: new Map() };
+    return { formatVersion: 1, sequence: 0n, meta: null, core: bytes, texts: new Map(), metadata: new Map() };
   }
   throw new SnapshotCorruptError('bad-magic', `0x${magic.toString(16).padStart(8, '0')}`);
 }
@@ -189,7 +216,7 @@ function decodeV2(bytes: Uint8Array, view: DataView): DecodedSnapshot {
     sequence,
     meta: parseMeta(metaBytes),
     core,
-    texts: parseTexts(textBytes),
+    ...parseTexts(textBytes),
   };
 }
 
@@ -204,7 +231,7 @@ function decodeV1(bytes: Uint8Array, view: DataView): DecodedSnapshot {
     sequence: 0n,
     meta: null,
     core: bytes.subarray(8, 8 + coreLen),
-    texts: parseTexts(bytes.subarray(8 + coreLen)),
+    ...parseTexts(bytes.subarray(8 + coreLen)),
   };
 }
 
@@ -239,8 +266,10 @@ function parseMeta(metaBytes: Uint8Array): SnapshotMeta {
   return m as SnapshotMeta;
 }
 
-function parseTexts(textBytes: Uint8Array): Map<string, string> {
-  if (textBytes.length === 0) return new Map();
+function parseTexts(textBytes: Uint8Array): { texts: Map<string, string>; metadata: Map<string, Metadata> } {
+  const texts = new Map<string, string>();
+  const metadata = new Map<string, Metadata>();
+  if (textBytes.length === 0) return { texts, metadata };
   let parsed: unknown;
   try {
     parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(textBytes));
@@ -250,10 +279,20 @@ function parseTexts(textBytes: Uint8Array): Map<string, string> {
   if (
     !Array.isArray(parsed) ||
     !parsed.every(
-      (e) => Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && typeof e[1] === 'string',
+      (e) =>
+        Array.isArray(e) &&
+        (e.length === 2 || (e.length === 3 && isPlainJsonObject(e[2]))) &&
+        typeof e[0] === 'string' &&
+        typeof e[1] === 'string',
     )
   ) {
-    throw new SnapshotCorruptError('bad-texts', 'expected an array of [id, text] string pairs');
+    throw new SnapshotCorruptError('bad-texts', 'expected an array of [id, text] or [id, text, metadata] tuples');
   }
-  return new Map(parsed as Array<[string, string]>);
+  for (const [id, text, m] of parsed as Array<[string, string, Metadata?]>) {
+    texts.set(id, text);
+    // A later duplicate id wins for the text; keep its metadata (or lack of it) in step.
+    if (m === undefined) metadata.delete(id);
+    else metadata.set(id, m);
+  }
+  return { texts, metadata };
 }

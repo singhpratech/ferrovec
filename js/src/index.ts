@@ -26,6 +26,7 @@ export {
 } from './errors.ts';
 export type { SnapshotCorruptReason, WalCorruptReason } from './errors.ts';
 export type { WalRecord } from './wal.ts';
+export type { Metadata } from './metadata.ts';
 export type { EmbeddingSpace, SnapshotMeta, SnapshotSource } from './snapshot.ts';
 
 export type {

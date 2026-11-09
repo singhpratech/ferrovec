@@ -77,6 +77,8 @@ interface Req {
   persist?: boolean;
   text?: string;
   docId?: string;
+  /** `insert`: the document's metadata. */
+  metadata?: Record<string, unknown>;
   k?: number;
   /** `list`: page offset and size (engine defaults when omitted). */
   offset?: number;
@@ -148,7 +150,7 @@ function openCoordinator(req: Req): Promise<Coordinator> {
     requestTimeoutMs: 250,
     openTimeoutMs: req.openTimeoutMs,
     opTimeoutMs: req.opTimeoutMs,
-    makeEngine: async ({ core, initialTexts, initialMeta, replay, persister }) => {
+    makeEngine: async ({ core, initialTexts, initialMetadata, initialMeta, replay, persister }) => {
       if (req.slowEngineMs && req.slowEngineMs > 0) {
         await new Promise((r) => setTimeout(r, req.slowEngineMs));
       }
@@ -160,6 +162,7 @@ function openCoordinator(req: Req): Promise<Coordinator> {
         embedder: fakeEmbedder(req.slowEmbedMs, req.model ?? FAKE_MODEL),
         core,
         initialTexts,
+        initialMetadata,
         initialMeta,
         replay,
         persister,
@@ -311,7 +314,7 @@ async function handle(req: Req): Promise<unknown> {
     case 'open':
       return open(req);
     case 'insert':
-      return { id: await requireStore().insert(req.text ?? '', req.docId) };
+      return { id: await requireStore().insert(req.text ?? '', req.docId, req.metadata) };
     case 'query':
       return { results: await requireStore().query(req.text ?? '', req.k ?? 5) };
     case 'size':

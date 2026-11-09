@@ -401,3 +401,180 @@ test('list(): the order survives a reopen (snapshot texts + write-ahead log repl
   ]);
   assert.equal(reopened.size(), 4);
 });
+
+test('metadata: insert → query hit and list row carry it; documents without it have no metadata key', async () => {
+  const records: WalRecord[] = [];
+  const engine = await Engine.create({
+    embedder: makeFakeEmbedder(),
+    core: await createCore(DIMS),
+    persister: { append: async (r) => void records.push(r), async flush() {}, async close() {} },
+  });
+  const meta = { source: 'note', addedAt: 1_700_000_000_000, tags: ['cats', 'mats'], nested: { page: 3 } };
+  await engine.insert('the cat sat on the mat', 'cat', meta);
+  await engine.insert('quantum chromodynamics describes quarks', 'quark');
+  const auto = await engine.insert('a feline napped on a rug', undefined, { source: 'web' });
+
+  const hits = await engine.query('the cat sat on the mat', 3);
+  assert.equal(hits[0]?.id, 'cat');
+  assert.deepEqual(hits[0]?.metadata, meta);
+  const quark = hits.find((h) => h.id === 'quark');
+  assert.ok(quark);
+  assert.equal('metadata' in quark, false, 'no metadata → no key');
+
+  assert.deepEqual(engine.list(), [
+    { id: 'cat', text: 'the cat sat on the mat', metadata: meta },
+    { id: 'quark', text: 'quantum chromodynamics describes quarks' },
+    { id: auto, text: 'a feline napped on a rug', metadata: { source: 'web' } },
+  ]);
+
+  // The log gets the JSON once per insert; a metadata-less insert logs none.
+  assert.deepEqual(
+    records.map((r) => (r.kind === 'insert' ? r.metadataJson : r.kind)),
+    [JSON.stringify(meta), undefined, '{"source":"web"}'],
+  );
+
+  // Stored metadata is a copy: mutating the caller's object, a hit, or a row changes nothing.
+  meta.tags.push('mutated');
+  hits[0]!.metadata!.source = 'mutated';
+  engine.list()[0]!.metadata!.source = 'mutated';
+  assert.deepEqual(engine.list()[0]?.metadata, {
+    source: 'note',
+    addedAt: 1_700_000_000_000,
+    tags: ['cats', 'mats'],
+    nested: { page: 3 },
+  });
+});
+
+test('metadata: an upsert replaces it (never merges) and an upsert without it clears it; remove drops it', async () => {
+  const engine = await Engine.create({ embedder: makeFakeEmbedder(), core: await createCore(DIMS) });
+  await engine.insert('alpha one', 'a', { x: 1, y: 2 });
+  await engine.insert('alpha one', 'a', { y: 3 });
+  assert.deepEqual(engine.list(), [{ id: 'a', text: 'alpha one', metadata: { y: 3 } }], 'replaced, not merged');
+
+  await engine.insert('alpha two', 'a');
+  assert.deepEqual(engine.list(), [{ id: 'a', text: 'alpha two' }], 'an upsert with no metadata clears it');
+  assert.equal('metadata' in (await engine.query('alpha two', 1))[0]!, false);
+
+  await engine.insert('alpha three', 'a', { z: true });
+  assert.equal(await engine.remove('a'), true);
+  await engine.insert('alpha back', 'a');
+  assert.deepEqual(engine.list(), [{ id: 'a', text: 'alpha back' }], 'remove dropped it; re-insert starts clean');
+  assert.equal(engine.snapshot().metadata?.size, 0);
+});
+
+test('metadata: over 64 KiB → RangeError, not serialisable → TypeError, both before embedding', async () => {
+  let embeds = 0;
+  const inner = makeFakeEmbedder();
+  const records: WalRecord[] = [];
+  const engine = await Engine.create({
+    embedder: { ...inner, embed: (t) => (embeds++, inner.embed(t)) },
+    core: await createCore(DIMS),
+    persister: { append: async (r) => void records.push(r), async flush() {}, async close() {} },
+  });
+  const before = embeds;
+
+  // {"k":"…"} is 8 bytes of framing: 65528 'x' is exactly 64 KiB, one more is over.
+  const atCap = { k: 'x'.repeat(64 * 1024 - 8) };
+  assert.equal(JSON.stringify(atCap).length, 64 * 1024);
+  await assert.rejects(engine.insert('too big', 'big', { k: 'x'.repeat(64 * 1024 - 7) }), (err: unknown) => {
+    assert.ok(err instanceof RangeError);
+    assert.equal(err.message, 'metadata too large');
+    return true;
+  });
+  // The cap is in UTF-8 bytes: 21846 three-byte characters ≈ 64 KiB + 2 bytes of JSON.
+  await assert.rejects(engine.insert('too big', 'big', { k: '東'.repeat(21_846) }), RangeError);
+
+  const cycle: Record<string, unknown> = { a: 1 };
+  cycle.self = cycle;
+  const bad: Array<[string, unknown]> = [
+    ['function', { f: () => 1 }],
+    ['nested function', { deep: { list: [1, () => 2] } }],
+    ['BigInt', { n: 10n }],
+    ['symbol', { s: Symbol('x') }],
+    ['cycle', cycle],
+    ['array', [1, 2]],
+    ['null', null],
+    ['string', 'not an object'],
+  ];
+  for (const [label, metadata] of bad) {
+    await assert.rejects(
+      engine.insert('rejected', 'bad', metadata as Record<string, unknown>),
+      (err: unknown) => err instanceof TypeError,
+      label,
+    );
+  }
+  assert.equal(embeds, before, 'nothing was embedded');
+  assert.equal(engine.size(), 0, 'nothing was stored');
+  assert.deepEqual(records, [], 'nothing was logged');
+  assert.equal(await engine.insert('first auto'), 'auto-0', 'a rejected insert does not consume an auto id');
+
+  // Exactly at the cap is accepted.
+  await engine.insert('at the cap', 'cap', atCap);
+  assert.equal(engine.list({ offset: 1 })[0]?.metadata?.k, atCap.k);
+});
+
+test('metadata: a rejected append rolls a new insert back with its metadata; an upsert keeps the new metadata', async () => {
+  let failAppends = false;
+  const engine = await Engine.create({
+    embedder: makeFakeEmbedder(),
+    core: await createCore(DIMS),
+    persister: {
+      append: async () => {
+        if (failAppends) throw new Error('simulated QuotaExceededError');
+      },
+      async flush() {},
+      async close() {},
+    },
+  });
+  await engine.insert('kept alpha document', 'keep', { v: 1 });
+  failAppends = true;
+  await assert.rejects(engine.insert('ghost zulu', 'ghost', { v: 'ghost' }), /QuotaExceeded/);
+  assert.equal(engine.snapshot().metadata?.has('ghost'), false, 'rolled back with the item');
+  await assert.rejects(engine.insert('kept alpha document', 'keep', { v: 2 }), /QuotaExceeded/);
+  assert.deepEqual(engine.list()[0]?.metadata, { v: 2 }, 'at-least-once, like the text');
+});
+
+test('metadata survives a reopen: snapshot 3-tuples + kind-3 log records replayed on top', async () => {
+  const embedder = makeFakeEmbedder();
+  const log: WalRecord[] = [];
+  const engine = await Engine.create({
+    embedder,
+    core: await createCore(DIMS),
+    persister: { append: async (r) => void log.push(r), async flush() {}, async close() {} },
+  });
+  await engine.insert('alpha one', 'a', { n: 1 });
+  await engine.insert('bravo two', 'b');
+  await engine.insert('charlie three', 'c', { n: 3, tags: ['c'] });
+  await engine.insert('delta four', 'd', { n: 4 });
+
+  const source = engine.snapshot();
+  const bytes = encodeSnapshot(source.core, source.texts, { sequence: 1n, meta: source.meta }, source.metadata);
+  log.length = 0;
+
+  // After the checkpoint: metadata added, cleared, replaced, and a removed id.
+  await engine.insert('bravo two', 'b', { n: 2 });
+  await engine.insert('charlie three', 'c');
+  await engine.insert('alpha one', 'a', { replaced: true });
+  await engine.remove('d');
+  await engine.insert('echo five', 'e', { n: 5 });
+  const before = engine.list();
+
+  const snap = decodeSnapshot(bytes);
+  assert.deepEqual([...snap.metadata.keys()], ['a', 'c', 'd']);
+  const reopened = await Engine.create({
+    embedder,
+    core: await createCoreFromBytes(snap.core),
+    initialTexts: snap.texts,
+    initialMetadata: snap.metadata,
+    initialMeta: snap.meta,
+    replay: [...log],
+  });
+  assert.deepEqual(reopened.list(), before);
+  assert.deepEqual(reopened.list(), [
+    { id: 'a', text: 'alpha one', metadata: { replaced: true } },
+    { id: 'b', text: 'bravo two', metadata: { n: 2 } },
+    { id: 'c', text: 'charlie three' },
+    { id: 'e', text: 'echo five', metadata: { n: 5 } },
+  ]);
+  assert.deepEqual((await reopened.query('echo five', 1))[0]?.metadata, { n: 5 });
+});
