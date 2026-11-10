@@ -47,6 +47,13 @@ export interface VectorCore {
   dims(): number;
   /** Serialize the whole index to bytes (round-trips through `fromBytes`). */
   toBytes(): Uint8Array;
+  /**
+   * Rebuild the index from its live vectors only, dropping removed and
+   * replaced ones (which otherwise stay in memory and in {@link toBytes} as
+   * tombstones). Optional, so cores injected without it keep working;
+   * {@link Engine.compact} then only rewrites the persisted files.
+   */
+  compact?(): void;
 }
 
 /**
@@ -65,6 +72,13 @@ export interface Persister {
   flush(): Promise<void>;
   /** Final checkpoint + release of handles. */
   close(): Promise<void>;
+  /**
+   * Write the current state as a full snapshot into every snapshot slot and
+   * reset the log, even when nothing was logged since the last checkpoint, so
+   * no file of the store still holds data that is no longer live. Optional;
+   * {@link Engine.compact} falls back to {@link flush} without it.
+   */
+  rewrite?(): Promise<void>;
 }
 
 /** A single ranked hit returned from {@link Engine.query}. */

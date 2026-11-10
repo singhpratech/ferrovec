@@ -310,6 +310,22 @@ export class Engine {
     };
   }
 
+  /**
+   * Drop removed and replaced documents from storage, not just from results:
+   * rebuild the core from its live vectors (a removal or upsert otherwise
+   * leaves the old vector and id behind as a tombstone, in memory and in
+   * every snapshot) and then rewrite every snapshot slot and the log from the
+   * compacted state. Search results and {@link list} are unchanged.
+   *
+   * Cost: one HNSW re-insert per live document plus two full snapshot writes,
+   * during which the engine is busy.
+   */
+  async compact(): Promise<void> {
+    this.#core.compact?.();
+    if (this.#persister.rewrite) await this.#persister.rewrite();
+    else await this.#persister.flush();
+  }
+
   /** Checkpoint now: write a full snapshot and reset the write-ahead log. */
   flush(): Promise<void> {
     return this.#persister.flush();

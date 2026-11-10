@@ -76,6 +76,14 @@ export interface FlushRequest {
   id: RequestId;
   type: 'flush';
 }
+/**
+ * Drop removed/replaced vectors and rewrite the store's files (sent by
+ * `Ferrovec.compact`; on a follower, routed to the leader).
+ */
+export interface CompactRequest {
+  id: RequestId;
+  type: 'compact';
+}
 export interface RoleRequest {
   id: RequestId;
   type: 'role';
@@ -102,6 +110,7 @@ export type WorkerRequest =
   | SizeRequest
   | ListRequest
   | FlushRequest
+  | CompactRequest
   | RoleRequest
   | CloseRequest
   | DestroyRequest;
@@ -138,6 +147,9 @@ export interface ListResult {
 }
 export interface FlushResult {
   flushed: true;
+}
+export interface CompactResult {
+  compacted: true;
 }
 export interface RoleResult {
   role: Role;

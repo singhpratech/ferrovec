@@ -478,6 +478,21 @@ export class SlotStore implements PersistentStore {
     if (this.#walRecords > 0) this.#checkpoint();
   }
 
+  /**
+   * Checkpoint twice, unconditionally: one snapshot into each slot (the
+   * second also resets the log again), so neither slot nor the log still
+   * holds anything the current state does not. Each checkpoint is the
+   * ordinary crash-safe one, so a kill between them loses nothing.
+   */
+  async rewrite(): Promise<void> {
+    if (this.#closed) throw new Error('[ferrovec] store is closed');
+    this.#clearRelaxedFlush();
+    this.#clearScheduledCheckpoint();
+    this.#flushWal();
+    this.#checkpoint();
+    this.#checkpoint();
+  }
+
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;

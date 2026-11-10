@@ -9,6 +9,7 @@
 import type { Role } from './coordinator.ts';
 import type { Metadata } from './metadata.ts';
 import type {
+  CompactResult,
   FlushResult,
   InsertResult,
   ListResult,
@@ -344,6 +345,25 @@ export class Ferrovec {
    */
   async flush(): Promise<void> {
     await this.#send<FlushResult>({ type: 'flush' });
+  }
+
+  /**
+   * Remove deleted documents from disk, not just from results. A
+   * {@link remove} (or an upsert) takes a document out of every query and
+   * {@link list} at once and drops its text and metadata, but the index keeps
+   * its old vector and id as a tombstone, and the older of the two snapshot
+   * slots can still hold the previous state. `compact()` rebuilds the index
+   * from the live documents only and rewrites both snapshot slots and the
+   * write-ahead log from it, so afterwards no file of the store holds a
+   * removed document's text, metadata, vector or id. It also reclaims the
+   * space tombstones take, which grows with every remove and upsert.
+   *
+   * Cost: every live vector is re-inserted (a full HNSW rebuild) and two full
+   * snapshots are written; other operations wait meanwhile. Results are
+   * unchanged. On a follower tab it runs on the leader.
+   */
+  async compact(): Promise<void> {
+    await this.#send<CompactResult>({ type: 'compact' });
   }
 
   /** Close the index and terminate the worker. */

@@ -1257,3 +1257,44 @@ test('modelLen flipped to 0xFFFF on a live log with records → StoreCorruptErro
   fresh.files.set('wal.bin', freshLog);
   await refusesBadHeader(fresh);
 });
+
+test('rewrite() writes the current state into both slots and resets the log, even with nothing logged', async () => {
+  const fs = new MemFS();
+  const store = await open(fs);
+  const state = { count: 3 };
+  store.bind(producer(state));
+  await commit(store);
+  state.count = 4;
+  await commit(store);
+  assert.equal(fs.seq('slot-a.bin'), 1n);
+  assert.equal(fs.seq('slot-b.bin'), 2n);
+  assert.equal(decodeSnapshot(fs.files.get('slot-a.bin')!).texts.size, 3, 'the older slot holds the older state');
+
+  // Two documents removed (and the core compacted): only 2 are live now.
+  await store.append({ kind: 'remove', id: 'id-3' });
+  await store.append({ kind: 'remove', id: 'id-2' });
+  state.count = 2;
+  await store.rewrite();
+  assert.equal(fs.seq('slot-a.bin'), 3n);
+  assert.equal(fs.seq('slot-b.bin'), 4n);
+  for (const slot of ['slot-a.bin', 'slot-b.bin']) {
+    const snap = decodeSnapshot(fs.files.get(slot)!);
+    assert.deepEqual([...snap.texts.keys()], ['id-0', 'id-1'], `${slot} holds only the live state`);
+  }
+  assert.deepEqual(fs.wal(), { base: 4n, records: [], size: HDR }, 'log reset onto the last rewrite');
+
+  // Unlike flush(), rewrite() writes even when nothing was logged since.
+  await store.flush();
+  assert.equal(fs.seq('slot-a.bin'), 3n, 'flush with an empty log writes nothing');
+  await store.rewrite();
+  assert.equal(fs.seq('slot-a.bin'), 5n);
+  assert.equal(fs.seq('slot-b.bin'), 6n);
+
+  await store.close();
+  const reopened = await open(fs);
+  assert.equal(reopened.initialSnapshot?.sequence, 6n);
+  assert.equal(reopened.initialSnapshot?.texts.size, 2);
+  assert.deepEqual(reopened.initialReplay, []);
+  await reopened.close();
+  await assert.rejects(store.rewrite(), /closed/);
+});

@@ -20,7 +20,7 @@
  *   {@link Engine} + persistence. Exactly one writer exists at a time, so the
  *   old lock-contention crash can never happen.
  * - **Followers** (did not win the lock) hold no core. They forward
- *   `insert`/`query`/`remove`/`size`/`list`/`flush` to the leader over a
+ *   `insert`/`query`/`remove`/`size`/`list`/`flush`/`compact` to the leader over a
  *   {@link BroadcastChannel} (`ferrovec-coord:<name>`) as correlation-id
  *   request/response messages and return the leader's answers.
  * - **Failover.** When the leader tab closes or crashes, its Web Lock releases;
@@ -181,7 +181,7 @@ export interface CoordinatorOptions {
   opTimeoutMs?: number;
 }
 
-type Op = 'insert' | 'query' | 'remove' | 'size' | 'list' | 'flush';
+type Op = 'insert' | 'query' | 'remove' | 'size' | 'list' | 'flush' | 'compact';
 interface OpArgs {
   text?: string;
   docId?: string;
@@ -407,6 +407,11 @@ export class Coordinator {
 
   async flush(): Promise<void> {
     await this.#route('flush', {});
+  }
+
+  /** Compact the leader's engine (see {@link Engine.compact}); a follower forwards it. */
+  async compact(): Promise<void> {
+    await this.#route('compact', {});
   }
 
   /** Final flush + release of the OPFS handle and Web Lock (leader), or of the
@@ -784,6 +789,9 @@ export class Coordinator {
         return engine.list({ offset: args.offset, limit: args.limit });
       case 'flush':
         await engine.flush();
+        return true;
+      case 'compact':
+        await engine.compact();
         return true;
     }
   }

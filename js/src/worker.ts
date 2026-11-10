@@ -91,6 +91,9 @@ async function handle(request: WorkerRequest): Promise<unknown> {
     case 'flush':
       await requireStore().flush();
       return { flushed: true };
+    case 'compact':
+      await requireStore().compact();
+      return { compacted: true };
     case 'role':
       return { role: requireStore().role };
     case 'close': {

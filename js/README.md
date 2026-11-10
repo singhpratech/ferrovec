@@ -94,6 +94,15 @@ a store that holds metadata with `0.4.x`, which cannot read those records.
 keeps its original position, removed documents never appear, and the order is
 the same after a reopen); `limit` defaults to 100 and is clamped to 1,000.
 
+`db.remove(id)` (and an upsert) takes the old document out of every result at
+once and drops its text and metadata, but the index keeps its old vector and id
+as a tombstone, and the older snapshot slot can still hold the previous state.
+`await db.compact()` rebuilds the index from the live documents and rewrites
+both snapshot slots and the log, so afterwards no file of the store holds a
+removed document. It re-inserts every live vector and writes two full
+snapshots, so call it after a deletion that must really be gone, or now and
+then in a store with many removes and upserts.
+
 ## Persistence (OPFS)
 
 By default an index is **persisted** to the [Origin Private File System](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)
