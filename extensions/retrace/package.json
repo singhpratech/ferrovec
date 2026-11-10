@@ -1,0 +1,26 @@
+{
+  "name": "retrace-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Retrace: semantic search over every page you have read, stored only in your browser. A Chrome MV3 extension built on ferrovec.",
+  "scripts": {
+    "fetch-model": "node tools/fetch-model.ts",
+    "build": "tsc --noEmit && vite build && vite build --config vite.content.config.ts && node tools/copy-assets.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "e2e": "node test/e2e/run.ts",
+    "bench": "node test/e2e/bench.ts"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "ferrovec": "file:../../js"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.4",
+    "@types/node": "^22.20.5",
+    "playwright": "1.61.1",
+    "typescript": "^5",
+    "vite": "^7.3.7"
+  }
+}

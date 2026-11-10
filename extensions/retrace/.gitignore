@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# model weights are downloaded by `npm run fetch-model`, never committed
+models/
+# e2e / bench run output (profiles, logs, measurements)
+test/e2e/.out/
