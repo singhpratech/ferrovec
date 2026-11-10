@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
     "e2e": "node test/e2e/run.ts",
-    "bench": "node test/e2e/bench.ts"
+    "bench": "node test/e2e/bench.ts",
+    "scores": "node test/e2e/scores.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

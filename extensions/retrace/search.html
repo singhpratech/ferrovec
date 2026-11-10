@@ -53,7 +53,12 @@
 
       <section aria-label="Results">
         <h2 id="results-heading" class="section-label">Recently read</h2>
+        <p id="no-strong" class="no-strong" hidden>Nothing you have read matches closely.</p>
         <ol id="results" class="results"></ol>
+        <details id="weaker" class="weaker" hidden>
+          <summary id="weaker-summary"></summary>
+          <ol id="weak-results" class="results weak"></ol>
+        </details>
         <p id="empty" class="empty" hidden></p>
       </section>
 

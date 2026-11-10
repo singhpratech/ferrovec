@@ -5,7 +5,7 @@
 
 import { isBlocked } from './lib/blocklist.ts';
 import { getPage, touchPage } from './lib/bookkeeping.ts';
-import { groupHits, passageLink } from './lib/group.ts';
+import { omniboxSuggestions } from './lib/group.ts';
 import { sha256Hex, urlHash } from './lib/hash.ts';
 import { MAX_TEXT_CHARS, MIN_TEXT_CHARS } from './lib/settings.ts';
 import { hostOf, normalizeUrl } from './lib/url.ts';
@@ -113,12 +113,8 @@ onBackgroundRequest(handle);
 registerOmnibox({
   async suggest(text) {
     if (text.trim().length < 2) return [];
-    const pages = groupHits(await search(text, OMNIBOX_K)).slice(0, OMNIBOX_SUGGESTIONS);
-    return pages.map((p) => ({
-      content: passageLink(p.url, p.snippet),
-      title: p.title,
-      detail: `${p.host}: ${p.snippet.replace(/\s+/g, ' ').slice(0, 120)}`,
-    }));
+    // Strong matches only: a weak one is not worth an address-bar slot.
+    return omniboxSuggestions(await search(text, OMNIBOX_K), text, OMNIBOX_SUGGESTIONS);
   },
   enter(text, disposition) {
     const target = /^https?:\/\//i.test(text.trim()) ? text.trim() : searchPageUrl(text.trim());

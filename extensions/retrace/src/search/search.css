@@ -230,6 +230,41 @@ select {
   opacity: 1;
 }
 
+mark {
+  color: inherit;
+  background: var(--mark);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.no-strong {
+  margin: 0 0 0.75rem;
+  font: italic 1.05rem/1.4 var(--serif);
+  color: var(--ink-soft);
+}
+
+.weaker {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+  padding-top: 0.6rem;
+}
+
+.weaker summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--ink-faint);
+  padding: 0.3rem 0;
+}
+
+.weaker summary:hover {
+  color: var(--ink-soft);
+}
+
+.results.weak .title {
+  font-size: 1.02rem;
+  color: var(--ink-soft);
+}
+
 .empty {
   padding: 2rem 0;
   color: var(--ink-faint);

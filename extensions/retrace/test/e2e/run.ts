@@ -101,8 +101,29 @@ async function start(proxy: Proxy, label: string): Promise<{ context: BrowserCon
   return { context, id, ui };
 }
 
-/** Search through the real search page and return the result URLs in order. */
-async function searchUi(ui: Page, id: string, q: string): Promise<{ urls: string[]; ms: number }> {
+interface UiResult {
+  url: string;
+  score: number;
+  /** The highlighted sentence of the snippet ('' when none). */
+  mark: string;
+  href: string;
+}
+interface UiSearch {
+  /** Strong results, in order. */
+  strong: UiResult[];
+  /** Weak results (behind the disclosure), in order. */
+  weak: UiResult[];
+  /** Every result URL, strong then weak. */
+  urls: string[];
+  /** "Nothing you have read matches closely" is shown. */
+  noStrongShown: boolean;
+  /** The weak disclosure is collapsed. */
+  weakCollapsed: boolean;
+  ms: number;
+}
+
+/** Search through the real search page; read strong and weak results off the page. */
+async function searchUi(ui: Page, id: string, q: string): Promise<UiSearch> {
   const t0 = performance.now();
   await ui.goto(`chrome-extension://${id}/search.html?q=${encodeURIComponent(q)}`);
   await ui.waitForFunction(
@@ -113,8 +134,20 @@ async function searchUi(ui: Page, id: string, q: string): Promise<{ urls: string
     { timeout: 60_000 },
   );
   const ms = Math.round(performance.now() - t0);
-  const urls = await ui.$$eval('#results li', (lis) => lis.map((li) => (li as HTMLElement).dataset.url ?? ''));
-  return { urls, ms };
+  const read = (selector: string): Promise<UiResult[]> =>
+    ui.$$eval(selector, (lis) =>
+      lis.map((li) => ({
+        url: (li as HTMLElement).dataset.url ?? '',
+        score: Number((li as HTMLElement).dataset.score),
+        mark: li.querySelector('.snippet mark')?.textContent ?? '',
+        href: li.querySelector<HTMLAnchorElement>('.title')?.href ?? '',
+      })),
+    );
+  const strong = await read('#results li');
+  const weak = await read('#weak-results li');
+  const noStrongShown = await ui.isVisible('#no-strong');
+  const weakCollapsed = await ui.$eval('#weaker', (d) => !(d as HTMLDetailsElement).open);
+  return { strong, weak, urls: [...strong, ...weak].map((r) => r.url), noStrongShown, weakCollapsed, ms };
 }
 
 /**
@@ -128,6 +161,7 @@ async function visit(context: BrowserContext, ui: Page, f: Fixture, expectIndexe
     if (m.text().includes('[retrace]')) console.log(`  [${f.host} ${m.type()}] ${m.text()}`);
   });
   const before = await bg<Status>(ui, { kind: 'status' });
+  const startedAt = Date.now();
   await tab.goto(fixtureUrl(f), { waitUntil: 'load' });
   if (!expectIndexed) {
     await sleep(4000);
@@ -137,7 +171,8 @@ async function visit(context: BrowserContext, ui: Page, f: Fixture, expectIndexe
       const status = await bg<Status>(ui, { kind: 'status' });
       const pages = await bg<PageRecord[]>(ui, { kind: 'pages', limit: 100 });
       const record = pages.find((p) => p.url === fixtureUrl(f));
-      const fresh = record && Date.parse(record.visitedAt) > Date.now() - 30_000;
+      // Recorded by this visit (an earlier visit's record does not count).
+      const fresh = record && Date.parse(record.visitedAt) >= startedAt;
       if (fresh || status.indexed > before.indexed || status.pending > before.pending) break;
       if (Date.now() > deadline) {
         console.log(`  ${f.host}: not queued within 30 s`);
@@ -251,13 +286,46 @@ async function main(): Promise<void> {
   check('password page not indexed', !hosts.includes(LOGIN.host));
 
   // ---- paraphrased queries through the search page -------------------------
-  const queryResults: Array<{ query: string; expected: string; got: string[]; ms: number }> = [];
+  const queryResults: Array<{ query: string; expected: string; strong: UiResult[]; weak: UiResult[]; ms: number }> = [];
+  const fmt = (rs: UiResult[]): string => rs.map((r) => `${new URL(r.url).host} ${r.score.toFixed(3)}`).join(', ');
   for (const f of ARTICLES) {
-    const { urls, ms } = await searchUi(ui, id, f.query!);
-    queryResults.push({ query: f.query!, expected: fixtureUrl(f), got: urls.slice(0, 3), ms });
-    check(`"${f.query}" → ${f.host} first`, urls[0] === fixtureUrl(f), `top: ${urls.slice(0, 3).join(', ')}; ${ms} ms`);
+    const r = await searchUi(ui, id, f.query!);
+    queryResults.push({ query: f.query!, expected: fixtureUrl(f), strong: r.strong, weak: r.weak.slice(0, 3), ms: r.ms });
+    check(
+      `"${f.query}" → exactly ${f.host} strong`,
+      r.strong.length === 1 && r.strong[0]!.url === fixtureUrl(f) && r.weakCollapsed && !r.noStrongShown,
+      `strong: ${fmt(r.strong)}; weak (collapsed): ${fmt(r.weak.slice(0, 3))}…; ${r.ms} ms`,
+    );
   }
   results.queries = queryResults;
+
+  // A topic no fixture is about: nothing strong, said plainly, weaker pages still offered.
+  const offTopicQuery = 'best way to train for a marathon in sixteen weeks';
+  const offTopic = await searchUi(ui, id, offTopicQuery);
+  check(
+    `off-topic "${offTopicQuery}" → zero strong results, "Nothing you have read matches closely"`,
+    offTopic.strong.length === 0 && offTopic.noStrongShown && offTopic.weak.length > 0 && offTopic.weakCollapsed,
+    `weak: ${fmt(offTopic.weak.slice(0, 3))}…`,
+  );
+  results.offTopic = { query: offTopicQuery, strong: offTopic.strong, weak: offTopic.weak };
+
+  // The snippet starts at, and marks, the sentence sharing most words with the
+  // query; the result link's text fragment points at that sentence.
+  const reefQuery = 'why do reefs turn white when the sea gets warmer';
+  const reef = await searchUi(ui, id, reefQuery);
+  const top = reef.strong[0];
+  const fragment = top ? decodeURIComponent(new URL(top.href).hash.replace(/^#:~:text=/, '')) : '';
+  const ocean = ARTICLES.find((a) => a.host === 'ocean.test')!;
+  check(
+    'snippet marks the best-overlap sentence and the link points at it',
+    !!top &&
+      top.url === fixtureUrl(ocean) &&
+      top.mark !== '' &&
+      ocean.paragraphs.some((p) => p.includes(top.mark)) &&
+      top.mark.startsWith(fragment) &&
+      fragment.split(' ').length >= 3,
+    `mark: "${top?.mark}"; fragment: "${fragment}"`,
+  );
 
   const bankQuery = await searchUi(ui, id, 'current account balance overdraft card transactions');
   check('blocked page absent from results', !bankQuery.urls.some((u) => u.includes(BLOCKED.host)));
@@ -287,7 +355,7 @@ async function main(): Promise<void> {
   const tReopen = performance.now();
   const reopened = await searchUi(ui, id, ARTICLES[0]!.query!);
   const firstQueryAfterRestartMs = Math.round(performance.now() - tReopen);
-  check('results persist across a browser restart', reopened.urls[0] === fixtureUrl(ARTICLES[0]!), `top: ${reopened.urls[0]}`);
+  check('results persist across a browser restart', reopened.strong[0]?.url === fixtureUrl(ARTICLES[0]!), `top: ${reopened.urls[0]}`);
   const stats2 = await bg<Stats>(ui, { kind: 'stats' });
   check('passage count unchanged after restart', stats2.passages === stats1.passages, `${stats1.passages} → ${stats2.passages}`);
   const status3 = await bg<Status>(ui, { kind: 'status' });

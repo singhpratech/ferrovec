@@ -6,6 +6,8 @@ import {
   groupHits,
   passageLink,
   relativeTime,
+  snippetFor,
+  splitByStrength,
   TIME_RANGES,
   type PageResult,
 } from '../lib/group.ts';
@@ -26,6 +28,10 @@ const hostSelect = $<HTMLSelectElement>('filter-host');
 const timeSelect = $<HTMLSelectElement>('filter-time');
 const statusEl = $<HTMLParagraphElement>('status');
 const resultsEl = $<HTMLOListElement>('results');
+const weakEl = $<HTMLOListElement>('weak-results');
+const weakerEl = $<HTMLDetailsElement>('weaker');
+const weakerSummary = $<HTMLElement>('weaker-summary');
+const noStrongEl = $<HTMLParagraphElement>('no-strong');
 const resultsHeading = $<HTMLHeadingElement>('results-heading');
 const emptyEl = $<HTMLParagraphElement>('empty');
 const template = $<HTMLTemplateElement>('result-template');
@@ -46,25 +52,20 @@ function formatBytes(n: number | null): string {
   return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
 }
 
-function snippetOf(text: string): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > 320 ? `${flat.slice(0, 317).replace(/\s+\S*$/, '')}…` : flat;
-}
-
 // ---------------------------------------------------------------------------
 // Results
 // ---------------------------------------------------------------------------
 
-function renderResults(results: PageResult[], heading: string, emptyText: string): void {
-  resultsHeading.textContent = heading;
-  resultsEl.replaceChildren();
-  emptyEl.hidden = results.length > 0;
-  emptyEl.textContent = emptyText;
+/** Fill `list` with result items; the snippet starts at (and marks) the sentence matching `query`. */
+function renderList(list: HTMLOListElement, results: PageResult[], query: string): void {
+  list.replaceChildren();
   for (const r of results) {
     const node = template.content.firstElementChild!.cloneNode(true) as HTMLLIElement;
+    const snippet = snippetFor(r.snippet, query);
     const link = node.querySelector<HTMLAnchorElement>('.title')!;
     link.textContent = r.title || r.url;
-    link.href = passageLink(r.url, r.snippet);
+    // Scroll to (and highlight) the marked sentence, or the passage start.
+    link.href = passageLink(r.url, snippet.mark || r.snippet);
     link.title = r.url;
     node.querySelector('.host')!.textContent = r.host;
     const when = node.querySelector<HTMLElement>('.when')!;
@@ -72,14 +73,55 @@ function renderResults(results: PageResult[], heading: string, emptyText: string
     when.title = new Date(r.visitedAt).toLocaleString();
     node.querySelector('.more')!.textContent =
       r.matches > 1 ? `${r.matches} matching passages` : '';
-    node.querySelector('.snippet')!.textContent = snippetOf(r.snippet);
+    // Page text goes in as text nodes only, never as markup.
+    const p = node.querySelector<HTMLParagraphElement>('.snippet')!;
+    p.replaceChildren();
+    if (r.snippet) {
+      if (snippet.lead) p.append('… ');
+      if (snippet.mark) {
+        const mark = document.createElement('mark');
+        mark.textContent = snippet.mark;
+        p.append(mark);
+      }
+      p.append(snippet.rest);
+      if (snippet.cut) p.append('…');
+    }
     node.dataset.url = r.url;
     node.dataset.host = r.host;
+    node.dataset.score = r.score.toFixed(3);
     node.querySelector<HTMLButtonElement>('.forget-link')!.addEventListener('click', () => {
       void forgetHost(r.host);
     });
-    resultsEl.append(node);
+    list.append(node);
   }
+}
+
+/**
+ * Show search results: strong matches as results, weak ones behind a
+ * collapsed disclosure, and a plain statement when nothing is strong.
+ */
+function renderSearch(results: PageResult[], query: string): void {
+  const { strong, weak } = splitByStrength(results);
+  resultsHeading.textContent = 'Results';
+  renderList(resultsEl, strong, query);
+  renderList(weakEl, weak, query);
+  noStrongEl.hidden = strong.length > 0 || weak.length === 0;
+  weakerEl.hidden = weak.length === 0;
+  weakerEl.open = false;
+  weakerSummary.textContent = `${weak.length} weaker match${weak.length === 1 ? '' : 'es'}`;
+  emptyEl.hidden = results.length > 0;
+  emptyEl.textContent = 'Nothing you have read matches that yet.';
+}
+
+/** Show a plain list (recently read pages, or an error). */
+function renderPlain(results: PageResult[], heading: string, emptyText: string): void {
+  resultsHeading.textContent = heading;
+  renderList(resultsEl, results, '');
+  weakEl.replaceChildren();
+  weakerEl.hidden = true;
+  noStrongEl.hidden = true;
+  emptyEl.hidden = results.length > 0;
+  emptyEl.textContent = emptyText;
 }
 
 function refreshHostOptions(results: PageResult[]): void {
@@ -118,11 +160,12 @@ async function runSearch(): Promise<void> {
     lastResults = groupHits(hits);
     refreshHostOptions(lastResults);
     const shown = filtered();
-    renderResults(shown, 'Results', 'Nothing you have read matches that yet.');
-    statusEl.textContent = `${shown.length} page${shown.length === 1 ? '' : 's'} in ${Math.round(performance.now() - started)} ms`;
+    renderSearch(shown, q);
+    const close = splitByStrength(shown).strong.length;
+    statusEl.textContent = `${close} close match${close === 1 ? '' : 'es'} in ${Math.round(performance.now() - started)} ms`;
   } catch (err) {
     if (seq !== searchSeq) return;
-    renderResults([], 'Results', `Search failed: ${(err as Error).message}`);
+    renderPlain([], 'Results', `Search failed: ${(err as Error).message}`);
   } finally {
     if (seq === searchSeq) document.body.dataset.state = 'ready';
   }
@@ -142,14 +185,14 @@ async function showRecent(): Promise<void> {
       matches: 0,
     }));
     refreshHostOptions(lastResults);
-    renderResults(
+    renderPlain(
       filtered(),
       'Recently read',
       'Nothing indexed yet. Read a few pages, then search for what you remember.',
     );
     statusEl.textContent = '';
   } catch (err) {
-    renderResults([], 'Recently read', `Could not load the index: ${(err as Error).message}`);
+    renderPlain([], 'Recently read', `Could not load the index: ${(err as Error).message}`);
   } finally {
     document.body.dataset.state = 'ready';
   }
