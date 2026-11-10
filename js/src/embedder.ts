@@ -7,7 +7,7 @@
  * fake embedder never touch it, and it stays fully offline-capable.
  */
 
-import type { Embedder, EmbedderOptions } from './types.ts';
+import type { Embedder, EmbedderOptions, TransformersEnvOptions } from './types.ts';
 
 /** Default model: MiniLM produces 384-dim sentence embeddings. */
 export const DEFAULT_MODEL = 'Xenova/all-MiniLM-L6-v2';
@@ -23,12 +23,58 @@ type FeatureExtractor = (
   options: { pooling: 'mean'; normalize: boolean },
 ) => Promise<FeatureExtractionOutput>;
 
+/** The part of transformers.js's `env` that {@link applyTransformersEnv} writes. */
+export interface TransformersEnvTarget {
+  [key: string]: unknown;
+  backends?: { onnx?: { wasm?: Record<string, unknown> } & Record<string, unknown> };
+}
+
+/** The top-level `env` keys {@link TransformersEnvOptions} may set, copied as-is. */
+const ENV_KEYS = [
+  'allowRemoteModels',
+  'allowLocalModels',
+  'localModelPath',
+  'remoteHost',
+  'useBrowserCache',
+  'useWasmCache',
+] as const;
+
+/**
+ * Copy `options` onto a transformers.js `env` object: the top-level keys as-is,
+ * `wasmPaths` / `numThreads` onto `env.backends.onnx.wasm` (skipped when the
+ * runtime has no onnx backend object, e.g. a stubbed env). Keys that are
+ * `undefined` (or not part of {@link TransformersEnvOptions}) are left alone.
+ */
+export function applyTransformersEnv(
+  env: TransformersEnvTarget,
+  options: TransformersEnvOptions | undefined,
+): void {
+  if (!options) return;
+  for (const key of ENV_KEYS) {
+    const value = options[key];
+    if (value !== undefined) env[key] = value;
+  }
+  if (options.wasmPaths === undefined && options.numThreads === undefined) return;
+  const onnx = env.backends?.onnx;
+  if (!onnx || typeof onnx !== 'object') return;
+  const wasm = (onnx.wasm ??= {});
+  if (options.wasmPaths !== undefined) {
+    wasm.wasmPaths =
+      typeof options.wasmPaths === 'string' ? options.wasmPaths : { ...options.wasmPaths };
+  }
+  if (options.numThreads !== undefined) wasm.numThreads = options.numThreads;
+}
+
 /**
  * Build the default transformers.js embedder.
  *
  * In a browser Worker, `device: 'webgpu'` is preferred with a graceful fallback
  * to the wasm backend; `'auto'` (the default) lets transformers.js choose,
  * which resolves to the wasm backend under Node.
+ *
+ * `options.transformers.env` is applied to transformers.js's `env` before the
+ * pipeline is built (so it decides where model and wasm files come from), and
+ * `options.transformers.dtype` is passed to the pipeline.
  *
  * The returned embedder is warmed up (one forward pass) so its {@link
  * Embedder.dims} is populated before it is returned.
@@ -38,11 +84,16 @@ export async function createTransformersEmbedder(
 ): Promise<Embedder> {
   const model = options.model ?? DEFAULT_MODEL;
   const requested = options.device ?? 'auto';
+  const dtype = options.transformers?.dtype;
 
-  const { pipeline } = await import('@huggingface/transformers');
+  const { pipeline, env } = await import('@huggingface/transformers');
+  applyTransformersEnv(env as unknown as TransformersEnvTarget, options.transformers?.env);
 
   const build = async (device?: 'webgpu' | 'wasm'): Promise<FeatureExtractor> => {
-    const extractor = await pipeline('feature-extraction', model, device ? { device } : {});
+    const pipelineOptions: Record<string, unknown> = {};
+    if (device) pipelineOptions.device = device;
+    if (dtype !== undefined) pipelineOptions.dtype = dtype;
+    const extractor = await pipeline('feature-extraction', model, pipelineOptions);
     return extractor as unknown as FeatureExtractor;
   };
 

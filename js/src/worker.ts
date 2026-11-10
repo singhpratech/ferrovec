@@ -54,6 +54,7 @@ async function open(request: Extract<WorkerRequest, { type: 'open' }>): Promise<
       Engine.create({
         model: request.model,
         device: request.device,
+        transformers: request.transformers,
         core,
         initialTexts,
         initialMetadata,

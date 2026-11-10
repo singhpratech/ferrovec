@@ -6,7 +6,13 @@
 
 import type { Role } from './coordinator.ts';
 import type { Metadata } from './metadata.ts';
-import type { Device, Durability, QueryResult, StoredDocument } from './types.ts';
+import type {
+  Device,
+  Durability,
+  QueryResult,
+  StoredDocument,
+  TransformersOptions,
+} from './types.ts';
 
 export type RequestId = number;
 
@@ -23,6 +29,8 @@ export interface OpenRequest {
    * response is sent. `'relaxed'`: acknowledged up to 50 ms before the flush.
    */
   durability?: Durability;
+  /** transformers.js configuration for the leader's embedder (plain data). */
+  transformers?: TransformersOptions;
 }
 export interface InsertRequest {
   id: RequestId;

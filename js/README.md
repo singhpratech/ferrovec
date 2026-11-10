@@ -378,6 +378,37 @@ const hits = await engine.query('hi there', 5);
 The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 `{ device }` to `Ferrovec.open` or `Engine.create` to change it.
 
+### Offline: local model and wasm files
+
+By default transformers.js downloads the model from the Hugging Face hub and
+the onnxruntime wasm from a CDN. To serve both yourself (an offline app, a
+browser extension, a strict CSP), pass `transformers` to `Ferrovec.open`
+(or `Engine.create`). It is applied to transformers.js's `env` inside the
+store's worker before the model loads:
+
+```ts
+const db = await Ferrovec.open('notes', {
+  device: 'wasm',
+  transformers: {
+    dtype: 'q8', // loads onnx/model_quantized.onnx
+    env: {
+      allowRemoteModels: false,
+      allowLocalModels: true,
+      localModelPath: '/models/', // serves /models/Xenova/all-MiniLM-L6-v2/...
+      useBrowserCache: false,
+      useWasmCache: false, // no blob: script URLs
+      wasmPaths: {
+        mjs: '/ort/ort-wasm-simd-threaded.mjs',
+        wasm: '/ort/ort-wasm-simd-threaded.wasm',
+      },
+    },
+  },
+});
+```
+
+`env` accepts `allowRemoteModels`, `allowLocalModels`, `localModelPath`,
+`remoteHost`, `useBrowserCache`, `useWasmCache`, `wasmPaths` and `numThreads`.
+
 ## Roadmap
 
 | | Milestone | Status |

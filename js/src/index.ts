@@ -12,7 +12,13 @@ export type { FerrovecOptions, InsertOptions } from './ferrovec.ts';
 
 export { Engine } from './engine.ts';
 
-export { createTransformersEmbedder, DEFAULT_MODEL, DEFAULT_DIMS } from './embedder.ts';
+export {
+  applyTransformersEnv,
+  createTransformersEmbedder,
+  DEFAULT_MODEL,
+  DEFAULT_DIMS,
+} from './embedder.ts';
+export type { TransformersEnvTarget } from './embedder.ts';
 export { createCore, createCoreFromBytes } from './core-loader.ts';
 
 export type { Role } from './coordinator.ts';
@@ -40,6 +46,8 @@ export type {
   Durability,
   EmbedderOptions,
   EngineCreateOptions,
+  TransformersEnvOptions,
+  TransformersOptions,
 } from './types.ts';
 
 export type { WorkerRequest, WorkerResponse } from './protocol.ts';

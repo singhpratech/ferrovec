@@ -152,7 +152,11 @@ export class Engine {
 
   static async #defaultEmbedder(options: EngineCreateOptions): Promise<Embedder> {
     const { createTransformersEmbedder } = await import('./embedder.ts');
-    return createTransformersEmbedder({ model: options.model, device: options.device });
+    return createTransformersEmbedder({
+      model: options.model,
+      device: options.device,
+      transformers: options.transformers,
+    });
   }
 
   static async #defaultCore(dims: number): Promise<VectorCore> {

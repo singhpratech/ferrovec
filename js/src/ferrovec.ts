@@ -19,7 +19,14 @@ import type {
   WorkerRequest,
   WorkerRequestBody,
 } from './protocol.ts';
-import type { Device, Durability, ListOptions, QueryResult, StoredDocument } from './types.ts';
+import type {
+  Device,
+  Durability,
+  ListOptions,
+  QueryResult,
+  StoredDocument,
+  TransformersOptions,
+} from './types.ts';
 
 /** Options for {@link Ferrovec.open}. */
 export interface FerrovecOptions {
@@ -58,6 +65,32 @@ export interface FerrovecOptions {
    * reload", not "survives power loss".
    */
   durability?: Durability;
+  /**
+   * Configure transformers.js inside the store's worker before the model
+   * loads: `env` settings (local model files, no remote models, where the
+   * onnxruntime wasm comes from) and the pipeline `dtype`. Omit it for the
+   * defaults (model from the Hugging Face hub, onnxruntime wasm from a CDN).
+   * Must be plain data. Only the tab that becomes the store's leader loads
+   * the model, so give every tab the same settings.
+   *
+   * ```ts
+   * await Ferrovec.open('notes', {
+   *   device: 'wasm',
+   *   transformers: {
+   *     dtype: 'q8',
+   *     env: {
+   *       allowRemoteModels: false,
+   *       allowLocalModels: true,
+   *       localModelPath: '/models/',
+   *       useBrowserCache: false,
+   *       useWasmCache: false,
+   *       wasmPaths: { mjs: '/ort/ort-wasm-simd-threaded.mjs', wasm: '/ort/ort-wasm-simd-threaded.wasm' },
+   *     },
+   *   },
+   * });
+   * ```
+   */
+  transformers?: TransformersOptions;
 }
 
 /** Options for {@link Ferrovec.insert}. */
@@ -169,6 +202,7 @@ export class Ferrovec {
       device: options.device,
       persist: options.persist,
       durability: options.durability,
+      ...(options.transformers === undefined ? {} : { transformers: options.transformers }),
     });
     client.#persistent = result.persistent;
     client.#role = result.role;

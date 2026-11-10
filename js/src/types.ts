@@ -123,12 +123,62 @@ export type Durability = 'strict' | 'relaxed';
 /** Backend the transformers.js pipeline should run on. */
 export type Device = 'webgpu' | 'wasm' | 'auto';
 
+/**
+ * Settings copied onto transformers.js's `env` before the model loads. Only the
+ * keys listed here are applied; an omitted key keeps transformers.js's default.
+ * Plain data, so it can cross into the worker.
+ */
+export interface TransformersEnvOptions {
+  /** `env.allowRemoteModels`: `false` never fetches model files from the hub. */
+  allowRemoteModels?: boolean;
+  /** `env.allowLocalModels`: load model files from {@link localModelPath}. */
+  allowLocalModels?: boolean;
+  /** `env.localModelPath`: URL prefix (in a browser) local model files are fetched from. */
+  localModelPath?: string;
+  /** `env.remoteHost`: the hub mirror remote model files are fetched from. */
+  remoteHost?: string;
+  /** `env.useBrowserCache`: keep fetched model files in the Cache API. */
+  useBrowserCache?: boolean;
+  /**
+   * `env.useWasmCache`: pre-fetch the onnxruntime wasm into the Cache API and
+   * import its loader from a `blob:` URL. Set `false` under a CSP that forbids
+   * `blob:` scripts (e.g. a browser extension).
+   */
+  useWasmCache?: boolean;
+  /**
+   * `env.backends.onnx.wasm.wasmPaths`: where the onnxruntime-web wasm files are
+   * loaded from, as a URL prefix or explicit `{ mjs, wasm }` URLs. Without it
+   * transformers.js loads them from a CDN.
+   */
+  wasmPaths?: string | { mjs?: string; wasm?: string };
+  /** `env.backends.onnx.wasm.numThreads`. */
+  numThreads?: number;
+}
+
+/** How the default embedder configures and loads transformers.js. */
+export interface TransformersOptions {
+  /**
+   * Applied to transformers.js's `env` before the pipeline is built. `env` is
+   * global to the context transformers.js runs in (the store's worker), so the
+   * last store opened there wins.
+   */
+  env?: TransformersEnvOptions;
+  /**
+   * The pipeline's `dtype` (e.g. `'q8'` for `onnx/model_quantized.onnx`,
+   * `'fp32'` for `onnx/model.onnx`). Defaults to transformers.js's choice for
+   * the device.
+   */
+  dtype?: string;
+}
+
 /** Options for constructing the default transformers.js embedder. */
 export interface EmbedderOptions {
   /** HF model id. Defaults to `Xenova/all-MiniLM-L6-v2` (384-dim). */
   model?: string;
   /** Preferred device. `'auto'` lets transformers.js pick the default backend. */
   device?: Device;
+  /** transformers.js configuration (local model files, wasm paths, dtype). */
+  transformers?: TransformersOptions;
 }
 
 /** Options for {@link Engine.create}. */
@@ -141,6 +191,8 @@ export interface EngineCreateOptions {
   model?: string;
   /** Device for the default embedder. */
   device?: Device;
+  /** transformers.js configuration for the default embedder. */
+  transformers?: TransformersOptions;
   /**
    * Override the core dimensionality. When omitted it is taken from the
    * embedder (probing with a warmup embed if the embedder reports `0`).
