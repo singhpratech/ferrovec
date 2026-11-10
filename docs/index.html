@@ -194,6 +194,16 @@
   .story-band em { color: var(--ink); font-style: italic; }
   .story-quote { margin: 2.2rem 0; padding: 0.4rem 0 0.4rem 1.6rem; border-left: 3px solid var(--accent); font-size: 1.4rem; line-height: 1.4; color: var(--ink); font-style: italic; font-weight: 400; }
   .story-close { color: var(--ink) !important; font-weight: 500; }
+
+  /* Retrace showcase */
+  .retrace-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 2rem 2.5rem; align-items: center; }
+  .retrace-shot { margin: 0; }
+  .retrace-shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 20px 45px -30px rgba(0,0,0,0.4); }
+  .retrace-facts { list-style: none; margin: 1.2rem 0 1.6rem; padding: 0; display: grid; gap: 0.55rem; font-size: 0.96rem; color: var(--ink-soft); }
+  .retrace-facts li { padding-left: 1.1rem; position: relative; }
+  .retrace-facts li::before { content: ""; position: absolute; left: 0; top: 0.65em; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .retrace-note { font-size: 0.82rem; color: var(--ink-faint); margin: 1rem 0 0; }
+  @media (max-width: 760px) { .retrace-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -205,6 +215,7 @@
       <a href="#vision">Vision</a>
       <a href="#story">Story</a>
       <a href="#what">Features</a>
+      <a href="#retrace">Retrace</a>
       <a href="#how">Architecture</a>
       <a href="#compare">Compare</a>
       <a href="#roadmap">Roadmap</a>
@@ -229,6 +240,13 @@
       <a class="btn btn-ghost" href="https://crates.io/crates/ferrovec"><img class="brand-logo" src="./assets/logo-256.png" alt="" /> crates.io →</a>
       <a class="btn btn-ghost" href="https://www.npmjs.com/package/ferrovec">npm →</a>
       <a class="btn btn-ghost" href="https://github.com/singhpratech/ferrovec">GitHub →</a>
+    </div>
+
+    <div class="new-strip">
+      <span class="new-tag">Built with ferrovec</span>
+      <ul>
+        <li><a href="#retrace">Retrace</a>: semantic search over every page you have read, all in your browser (on main, load unpacked)</li>
+      </ul>
     </div>
 
     <div class="new-strip">
@@ -318,6 +336,32 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
   </div>
 </section>
 
+<section class="band alt" id="retrace">
+  <div class="wrap">
+    <p class="eyebrow">Built with ferrovec</p>
+    <h2>Retrace: search everything you have read</h2>
+    <div class="retrace-grid">
+      <div>
+        <p class="section-lede" style="margin-bottom:0;">A Chrome extension that remembers the pages you read and finds them by meaning. Type <code>rt</code> and a few words you remember in the address bar. The text, the vectors and the embedding model all stay in your browser, with no account, server or API key.</p>
+        <ul class="retrace-facts">
+          <li>In an automated run, every request the browser made went through a logging proxy, and none was initiated by the extension.</li>
+          <li>Forget runs ferrovec <code>compact()</code>; the test then finds no trace of the forgotten text, id, URL or title in the on-disk store files.</li>
+          <li>On one desktop: queries at 2.8k passages took 19 ms (p50) and 26 ms (p95). 36 of 36 end-to-end checks pass.</li>
+          <li>Version 0.1.0, loads unpacked, not on the Chrome Web Store yet. Chrome is tested; Edge and Brave are expected to work but untested.</li>
+        </ul>
+        <a class="btn btn-primary" href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Retrace on GitHub →</a>
+        <p class="retrace-note">Building it added two library features, <code>transformers</code> (offline model files) and <code>db.compact()</code>. They are on main, in the next release; npm is still 0.5.0.</p>
+      </div>
+      <figure class="retrace-shot">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="./assets/retrace-dark.png" />
+          <img src="./assets/retrace-light.png" alt="Retrace search page showing grouped results for a remembered article" loading="lazy" />
+        </picture>
+      </figure>
+    </div>
+  </div>
+</section>
+
 <section class="band" id="how">
   <div class="wrap">
     <p class="eyebrow">How it works</p>
@@ -388,6 +432,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
       <div class="mile"><span class="mid">M6</span><div><h4>Cross-tab leader election <span class="status done">0.4.0</span></h4><p>Web Locks + BroadcastChannel single-writer election: one leader tab owns the store, followers proxy through it, and on close/crash a follower is promoted — verified with a real two-page headless failover test.</p></div></div>
       <div class="mile"><span class="mid">M7</span><div><h4>Crash-safe storage <span class="status done">0.4.0</span></h4><p>CRC-32 checksummed snapshots in two alternating slot files, a write-ahead log flushed before every acknowledgement, and a <a href="chaos.html">published kill-the-tab chaos suite</a>: 1,000 cycles each in Chromium and Firefox, zero acknowledged writes lost.</p></div></div>
       <div class="mile"><span class="mid">M8</span><div><h4>Metadata + LangChain.js + local RAG <span class="status done">0.5.0</span></h4><p>Per-document JSON metadata stored under the same write-ahead log and checksummed snapshots, a LangChain.js <code>VectorStore</code> adapter, and a <a href="https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag">local RAG example</a> built on the Vercel AI SDK.</p></div></div>
+      <div class="mile"><span class="mid">App</span><div><h4>Retrace extension <span class="status now">on main</span></h4><p>A Chrome extension on ferrovec: semantic search over pages you have read, stored only in the browser. Needed offline <code>transformers</code> config and <code>db.compact()</code>, both on main for the next release. <a href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Code and numbers</a>.</p></div></div>
     </div>
   </div>
 </section>

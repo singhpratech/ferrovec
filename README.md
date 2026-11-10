@@ -34,6 +34,18 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 > - **LangChain.js adapter** — `import { FerrovecVectorStore } from 'ferrovec/langchain'`; see [LangChain.js](#langchainjs).
 > - **Local RAG example** — [`examples/ai-sdk-local-rag`](./examples/ai-sdk-local-rag): notes in ferrovec, retrieval through a Vercel AI SDK tool call, answers from a local model.
 
+## Built with ferrovec: Retrace
+
+<p align="center">
+  <a href="./extensions/retrace"><img src="https://raw.githubusercontent.com/singhpratech/ferrovec/main/docs/assets/retrace-light.png" alt="Retrace search page showing results for a remembered article" width="760" /></a>
+</p>
+
+**[Retrace](./extensions/retrace)** is a Chrome extension that gives you semantic search over every page you have read. Type `rt` and a few words you remember in the address bar, and it finds the page.
+Everything stays in your browser: the text, the vectors and the embedding model are all local, with no account, server or API key. In an automated run, the browser made zero requests initiated by the extension.
+It is version 0.1.0 and loads unpacked for now; it is not on the Chrome Web Store yet. Read the [Retrace README](./extensions/retrace) for install steps, privacy controls, measured numbers and limits.
+
+Building it needed two library changes, both on `main` and **in the next release** (npm and crates.io are still `0.5.0`): the [`transformers` option](./js/README.md#offline-local-model-and-wasm-files) and the JS [`db.compact()`](./js/README.md#three-line-api) (documented [below](#offline-model-files-and-dbcompact-on-main-in-the-next-release)).
+
 ## Who it's for
 
 ferrovec is for apps where the vectors in the browser are the **only copy**, and losing them would be a bug the user notices — not a cache you can rebuild.
@@ -41,7 +53,7 @@ ferrovec is for apps where the vectors in the browser are the **only copy**, and
 - **Local-first notes, journals, and PKM tools.** The user types a note, sees it saved, and closes the lid. The acknowledged insert survives a tab kill; the next open replays the log. No sync server, no re-embedding on launch.
 - **Offline field apps.** Inspection, clinical, survey, or agricultural tools that run for hours without a network and get force-closed by the OS. Semantic search over what was captured has to survive that.
 - **Privacy-bound RAG.** Chat-with-your-documents for legal, HR, health, or internal docs where nothing may leave the device. Embedding a large corpus takes minutes; a checksummed, crash-tested index turns that one-time ingest into a durable asset. Runnable example: [`examples/ai-sdk-local-rag`](./examples/ai-sdk-local-rag) pairs ferrovec with the Vercel AI SDK and a local OpenAI-compatible model (Ollama by default).
-- **Browser extensions with memory.** Tab-history search, reading-list recall, "what did I see about X last week". Extensions are killed and restarted constantly; the write-ahead log is what makes *remembered* true.
+- **Browser extensions with memory.** Tab-history search, reading-list recall, "what did I see about X last week". Extensions are killed and restarted constantly; the write-ahead log is what makes *remembered* true. [Retrace](./extensions/retrace) is a working example: a Chrome extension that indexes the pages you read and searches them from the address bar.
 - **Multi-tab dashboards.** Support consoles, CRMs, admin tools where one user has five tabs open and each inserts and searches. One elected leader, one consistent store, no diverging indexes.
 - **Kiosks, edge, and PWA devices with no backend.** They reboot unexpectedly and nobody is there to re-ingest. Open picks the newest valid snapshot, refuses a corrupt one with a typed error, and the app decides what to do.
 - **Agent memory in the tab.** Assistants that accumulate episodic memory over weeks. The embedding-space guard refuses to open a store under a different model instead of silently returning wrong neighbours.
@@ -297,6 +309,13 @@ const restored = FerrovecCore.fromBytes(bytes);
 > documents in insertion order. From `0.5.0`, `db.insert(text, { id, metadata })` stores a JSON object
 > beside the text (as durable as the text, at most 64 KiB) and returns it on query hits and `list()` rows;
 > an upsert without `metadata` clears it.
+
+### Offline model files and `db.compact()` (on `main`, in the next release)
+
+> **Not in `0.5.0`.** These two changes are on `main` and will ship in the next release. npm and crates.io are still at `0.5.0`, so `npm install ferrovec` does not have them yet.
+
+- **`transformers` option.** `Ferrovec.open(name, { transformers: { env, dtype } })` configures transformers.js inside the store's worker, so the model and the onnxruntime wasm can be served from local files with no remote fetch. That is what lets ferrovec run fully offline and inside a Manifest V3 extension with a strict CSP. See [`js/README.md`](./js/README.md#offline-local-model-and-wasm-files).
+- **`await db.compact()`.** Rebuilds the index from the live documents and rewrites both snapshot slots and the write-ahead log, so a removed or replaced document leaves the store's files and not only its results. It re-inserts every live vector and writes two full snapshots, so call it after a deletion that must really be gone. See [`js/README.md`](./js/README.md#three-line-api).
 
 ### LangChain.js
 

@@ -97,7 +97,7 @@ the same after a reopen); `limit` defaults to 100 and is clamped to 1,000.
 `db.remove(id)` (and an upsert) takes the old document out of every result at
 once and drops its text and metadata, but the index keeps its old vector and id
 as a tombstone, and the older snapshot slot can still hold the previous state.
-`await db.compact()` rebuilds the index from the live documents and rewrites
+**On `main`, in the next release (not in npm `0.5.0`):** `await db.compact()` rebuilds the index from the live documents and rewrites
 both snapshot slots and the log, so afterwards no file of the store holds a
 removed document. It re-inserts every live vector and writes two full
 snapshots, so call it after a deletion that must really be gone, or now and
@@ -388,6 +388,8 @@ The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 `{ device }` to `Ferrovec.open` or `Engine.create` to change it.
 
 ### Offline: local model and wasm files
+
+> **On `main`, in the next release.** The `transformers` option is not in npm `0.5.0`.
 
 By default transformers.js downloads the model from the Hugging Face hub and
 the onnxruntime wasm from a CDN. To serve both yourself (an offline app, a
