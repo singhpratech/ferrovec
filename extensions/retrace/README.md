@@ -10,7 +10,15 @@ Status: version 0.1.0. It is **not on the Chrome Web Store yet**. For now you lo
 
 ## Install
 
-Retrace is not published to any store, so you build it and load it yourself.
+Retrace is not published to any store, so you load it yourself. There are two ways.
+
+### Option 1: download the release zip
+
+1. Download `retrace-0.1.0-chromium.zip` from the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0).
+2. Unzip it.
+3. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and choose the unzipped folder. It needs Chrome 116 or newer.
+
+### Option 2: build from source
 
 ```sh
 # 1. build the ferrovec JS package
@@ -137,7 +145,7 @@ npm run bench       # scale benchmark (needs dist built)
 
 ## Library changes this needed
 
-Building Retrace added two things to ferrovec. Both are on `main` and will ship in the next release; npm and crates.io are still at `0.5.0`, and the extension builds against the local `js/` package.
+Building Retrace added two things to ferrovec. Both shipped in ferrovec 0.6.0, and the extension builds against the local `js/` package.
 
 - `Ferrovec.open(name, { transformers: { env, dtype } })` configures transformers.js inside the store's worker, so the model and wasm load from local files with no remote fetch.
 - `db.compact()` makes removed or replaced documents leave the store's files, not only its results.

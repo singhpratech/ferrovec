@@ -72,7 +72,7 @@ const CRC_OFFSET = 28;
  * literal (not read from package.json) so this module stays dependency-free;
  * update it alongside the package version.
  */
-export const SNAPSHOT_WRITER = 'ferrovec-js/0.5.0';
+export const SNAPSHOT_WRITER = 'ferrovec-js/0.6.0';
 
 /** The embedding model + geometry a store's vectors live in. */
 export interface EmbeddingSpace {
@@ -89,7 +89,7 @@ export interface SnapshotMeta {
   embeddingSpace: EmbeddingSpace;
   /** Live items in the index at commit time. */
   count: number;
-  /** Writer identity, e.g. `"ferrovec-js/0.5.0"`. */
+  /** Writer identity, e.g. `"ferrovec-js/0.6.0"`. */
   writer: string;
   /** `Date.now()` at commit. */
   createdAt: number;

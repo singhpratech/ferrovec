@@ -231,7 +231,7 @@
   <canvas id="graph" aria-hidden="true"></canvas>
   <div class="hero-veil"></div>
   <div class="hero-inner wrap">
-    <span class="live-pill"><span class="dot"></span> v0.5.0 live on crates.io + npm</span>
+    <span class="live-pill"><span class="dot"></span> v0.6.0 live on crates.io + npm</span>
     <h1>The in-browser vector store that <em>remembers</em></h1>
     <p class="lede">Every other in-browser vector library is in-memory — it rebuilds on every reload and diverges the moment a second tab opens. ferrovec is the one that's <strong>durable and consistent</strong>: a Rust→WASM HNSW engine that saves to disk (OPFS) and stays in sync across tabs. Private, offline, survives the refresh — in three lines of JavaScript. You never write Rust; you never run a server.</p>
 
@@ -243,23 +243,16 @@
     </div>
 
     <div class="new-strip">
-      <span class="new-tag">Built with ferrovec</span>
+      <span class="new-tag">New in 0.6.0</span>
       <ul>
-        <li><a href="#retrace">Retrace</a>: semantic search over every page you have read, all in your browser (on main, load unpacked)</li>
-      </ul>
-    </div>
-
-    <div class="new-strip">
-      <span class="new-tag">New in 0.5.0</span>
-      <ul>
-        <li><a href="https://github.com/singhpratech/ferrovec#in-the-browser">Per-document metadata</a> on every hit and list row</li>
-        <li><a href="https://github.com/singhpratech/ferrovec#langchainjs">LangChain.js adapter</a>: <code>ferrovec/langchain</code></li>
-        <li><a href="https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag">Local RAG example</a> with the Vercel AI SDK</li>
+        <li><a href="https://github.com/singhpratech/ferrovec/blob/main/js/README.md#offline-local-model-and-wasm-files">Offline and extension-ready</a>: the <code>transformers</code> option loads local model files</li>
+        <li><a href="https://github.com/singhpratech/ferrovec/blob/main/js/README.md#three-line-api"><code>db.compact()</code></a>: removed documents leave the store's files</li>
+        <li><a href="#retrace">Retrace</a>: a Chromium extension on ferrovec, <a href="https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0">zip on the release</a></li>
       </ul>
     </div>
 
     <div class="hero-code">
-      <pre><span class="c">// Live in npm 0.5.0 — the three-line, batteries-included API</span>
+      <pre><span class="c">// Live in npm 0.6.0 — the three-line, batteries-included API</span>
 <span class="k">import</span> { Ferrovec } <span class="k">from</span> <span class="s">'ferrovec'</span>;
 <span class="k">const</span> db = <span class="k">await</span> Ferrovec.<span class="f">open</span>(<span class="s">'notes'</span>);          <span class="c">// worker + model + OPFS</span>
 <span class="k">await</span> db.<span class="f">insert</span>(<span class="s">'WASM handles the math, JS handles the DOM'</span>);
@@ -347,10 +340,10 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
           <li>In an automated run, every request the browser made went through a logging proxy, and none was initiated by the extension.</li>
           <li>Forget runs ferrovec <code>compact()</code>; the test then finds no trace of the forgotten text, id, URL or title in the on-disk store files.</li>
           <li>On one desktop: queries at 2.8k passages took 19 ms (p50) and 26 ms (p95). 36 of 36 end-to-end checks pass.</li>
-          <li>Version 0.1.0, loads unpacked, not on the Chrome Web Store yet. Chrome is tested; Edge and Brave are expected to work but untested.</li>
+          <li>Version 0.1.0, loads unpacked, not on the Chrome Web Store yet. A ready-to-load zip, <code>retrace-0.1.0-chromium.zip</code>, is on the <a href="https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0">v0.6.0 release</a>. Chrome is tested; Edge and Brave are expected to work but untested.</li>
         </ul>
         <a class="btn btn-primary" href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Retrace on GitHub →</a>
-        <p class="retrace-note">Building it added two library features, <code>transformers</code> (offline model files) and <code>db.compact()</code>. They are on main, in the next release; npm is still 0.5.0.</p>
+        <p class="retrace-note">Building it added two library features, <code>transformers</code> (offline model files) and <code>db.compact()</code>. Both shipped in ferrovec 0.6.0.</p>
       </div>
       <figure class="retrace-shot">
         <picture>
@@ -432,7 +425,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
       <div class="mile"><span class="mid">M6</span><div><h4>Cross-tab leader election <span class="status done">0.4.0</span></h4><p>Web Locks + BroadcastChannel single-writer election: one leader tab owns the store, followers proxy through it, and on close/crash a follower is promoted — verified with a real two-page headless failover test.</p></div></div>
       <div class="mile"><span class="mid">M7</span><div><h4>Crash-safe storage <span class="status done">0.4.0</span></h4><p>CRC-32 checksummed snapshots in two alternating slot files, a write-ahead log flushed before every acknowledgement, and a <a href="chaos.html">published kill-the-tab chaos suite</a>: 1,000 cycles each in Chromium and Firefox, zero acknowledged writes lost.</p></div></div>
       <div class="mile"><span class="mid">M8</span><div><h4>Metadata + LangChain.js + local RAG <span class="status done">0.5.0</span></h4><p>Per-document JSON metadata stored under the same write-ahead log and checksummed snapshots, a LangChain.js <code>VectorStore</code> adapter, and a <a href="https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag">local RAG example</a> built on the Vercel AI SDK.</p></div></div>
-      <div class="mile"><span class="mid">App</span><div><h4>Retrace extension <span class="status now">on main</span></h4><p>A Chrome extension on ferrovec: semantic search over pages you have read, stored only in the browser. Needed offline <code>transformers</code> config and <code>db.compact()</code>, both on main for the next release. <a href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Code and numbers</a>.</p></div></div>
+      <div class="mile"><span class="mid">App</span><div><h4>Retrace extension <span class="status done">0.6.0</span></h4><p>A Chrome extension on ferrovec: semantic search over pages you have read, stored only in the browser. Needed offline <code>transformers</code> config and <code>db.compact()</code>, both in 0.6.0. Load it unpacked from the <a href="https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0">release zip</a>. <a href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Code and numbers</a>.</p></div></div>
     </div>
   </div>
 </section>
@@ -453,7 +446,7 @@ cargo add ferrovec</pre>
         <div class="h"><span class="brand" style="font-size:1rem;"><img class="brand-logo" src="./assets/logo-256.png" alt="" /> ferrovec</span><span class="badge live">npm · live</span></div>
         <pre><span class="c"># the WASM core for the browser</span>
 npm install ferrovec</pre>
-        <p style="font-size:0.9rem; color:var(--ink-soft); margin:0.8rem 0 0;">The full three-line <code>open/insert/query</code> API — transformers.js embeddings, OPFS persistence, and cross-tab leader election — is live in <strong>0.5.0</strong>, plus the raw <code>FerrovecCore</code> class. <a href="https://www.npmjs.com/package/ferrovec">View on npm →</a></p>
+        <p style="font-size:0.9rem; color:var(--ink-soft); margin:0.8rem 0 0;">The full three-line <code>open/insert/query</code> API — transformers.js embeddings, OPFS persistence, and cross-tab leader election — is live in <strong>0.6.0</strong>, plus the raw <code>FerrovecCore</code> class. <a href="https://www.npmjs.com/package/ferrovec">View on npm →</a></p>
       </div>
     </div>
     <p style="margin-top:1.5rem; text-align:center;"><a class="btn btn-primary" href="https://github.com/singhpratech/ferrovec">★ Follow development on GitHub</a></p>
@@ -477,7 +470,7 @@ npm install ferrovec</pre>
         <a href="#roadmap">Roadmap</a>
       </div>
     </div>
-    <p class="disclaimer">ferrovec is in active early development. Both registries are published at v0.5.0: the Rust core on crates.io (core + compaction) and the full browser package on npm (transformers.js embeddings, OPFS persistence, and cross-tab leader election). Benchmark figures are from the project's own test suite; treat third-party comparisons as directional.</p>
+    <p class="disclaimer">ferrovec is in active early development. Both registries are published at v0.6.0: the Rust core on crates.io (core + compaction) and the full browser package on npm (transformers.js embeddings, OPFS persistence, and cross-tab leader election). Benchmark figures are from the project's own test suite; treat third-party comparisons as directional.</p>
   </div>
 </footer>
 

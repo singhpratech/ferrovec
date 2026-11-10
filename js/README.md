@@ -17,7 +17,7 @@ share one consistent store** instead of silently diverging.
 You give it text. It embeds, indexes, searches, and *remembers* — off the main
 thread, across reloads, across tabs. Nothing leaves the device.
 
-**`0.5.0`** — the three-line browser API (embeddings + OPFS persistence),
+**`0.6.0`** — the three-line browser API (embeddings + OPFS persistence),
 **safe across multiple tabs** via single-writer leader election, and now
 **crash-safe**: checksummed snapshots plus a write-ahead log, verified by a
 [published kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html).
@@ -28,10 +28,12 @@ thread, across reloads, across tabs. Nothing leaves the device.
 > this package: write notes, pull the plug mid-write, open a second tab, and watch nothing acknowledged
 > get lost.
 
-> **New in 0.5.0**
-> - **Per-document metadata** — `insert(text, { id, metadata })` stores a JSON object beside the text and returns it on every `query()` hit and `list()` row; see [Three-line API](#three-line-api).
-> - **LangChain.js adapter** — `import { FerrovecVectorStore } from 'ferrovec/langchain'`; see [LangChain.js](#langchainjs).
-> - **Local RAG example** — [`examples/ai-sdk-local-rag`](https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag): notes in ferrovec, retrieval through a Vercel AI SDK tool call, answers from a local model.
+> **New in 0.6.0**
+> - **Offline and extension-ready** : the `transformers` option on `Ferrovec.open` / `Engine.create` / `createTransformersEmbedder` serves the model and the onnxruntime wasm from local files, so ferrovec runs with no network and inside a Manifest V3 extension; see [Offline: local model and wasm files](#offline-local-model-and-wasm-files).
+> - **`db.compact()`** : removed and replaced documents leave the store's files, not only its results; see [Three-line API](#three-line-api). The on-disk format is unchanged from `0.5.0`.
+> - **Retrace** : a Chromium extension built on ferrovec, [`extensions/retrace`](https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace), with a zip on the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0).
+>
+> `0.5.0` added per-document metadata ([Three-line API](#three-line-api)), the [LangChain.js adapter](#langchainjs) and the [local RAG example](https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag).
 
 ## Who it's for
 
@@ -97,7 +99,7 @@ the same after a reopen); `limit` defaults to 100 and is clamped to 1,000.
 `db.remove(id)` (and an upsert) takes the old document out of every result at
 once and drops its text and metadata, but the index keeps its old vector and id
 as a tombstone, and the older snapshot slot can still hold the previous state.
-**On `main`, in the next release (not in npm `0.5.0`):** `await db.compact()` rebuilds the index from the live documents and rewrites
+**Since `0.6.0`:** `await db.compact()` rebuilds the index from the live documents and rewrites
 both snapshot slots and the log, so afterwards no file of the store holds a
 removed document. It re-inserts every live vector and writes two full
 snapshots, so call it after a deletion that must really be gone, or now and
@@ -389,7 +391,7 @@ The default embedder is `Xenova/all-MiniLM-L6-v2` (384-dim). Pass `{ model }` /
 
 ### Offline: local model and wasm files
 
-> **On `main`, in the next release.** The `transformers` option is not in npm `0.5.0`.
+> **Since `0.6.0`.** The `transformers` option needs npm `ferrovec@0.6.0` or later.
 
 By default transformers.js downloads the model from the Hugging Face hub and
 the onnxruntime wasm from a CDN. To serve both yourself (an offline app, a
@@ -431,6 +433,7 @@ const db = await Ferrovec.open('notes', {
 | **M6** | Cross-tab leader election (Web Locks) | ✅ `0.4.0` |
 | **M7** | Crash-safe storage — checksummed A/B snapshots, write-ahead log, chaos suite | ✅ `0.4.0` |
 | **M8** | Per-document metadata + LangChain.js adapter + local RAG example | ✅ `0.5.0` |
+| **M9** | Offline model loading + compact() + Retrace extension | ✅ `0.6.0` |
 
 The pure-Rust HNSW core is published separately on [crates.io](https://crates.io/crates/ferrovec).
 
