@@ -9,9 +9,10 @@ import {
   passageLink,
   relativeTime,
   snippetFor,
+  queryOverlap,
   splitByStrength,
-  STRONG_MARGIN,
-  STRONG_MIN_SCORE,
+  STRENGTH_RULE,
+  type StrengthRule,
   type PageResult,
 } from '../src/lib/group.ts';
 import type { Hit } from '../src/lib/types.ts';
@@ -132,29 +133,66 @@ function page(host: string, score: number): PageResult {
   };
 }
 
-test('splitByStrength: strong = above the floor AND within the margin of the top', () => {
+const RULE: StrengthRule = { floor: 0.48, lowFloor: 0.3, minGap: 0.15, minOverlap: 0.6, margin: 0.05 };
+
+function pageWith(host: string, score: number, snippet: string): PageResult {
+  return { ...page(host, score), snippet };
+}
+
+test('splitByStrength: a top page above the floor is strong; others need the floor AND the margin', () => {
   const { strong, weak } = splitByStrength(
-    [page('a', 0.62), page('b', 0.5), page('c', 0.45), page('d', 0.3)],
-    { minScore: 0.34, margin: 0.15 },
+    [page('a', 0.62), page('b', 0.59), page('c', 0.55), page('d', 0.3)],
+    '',
+    RULE,
   );
   assert.deepEqual(strong.map((r) => r.host), ['a', 'b']);
-  assert.deepEqual(weak.map((r) => r.host), ['c', 'd'], 'c clears the floor but is 0.17 below the top');
+  assert.deepEqual(weak.map((r) => r.host), ['c', 'd'], 'c clears the floor but is 0.07 below the top');
 });
 
-test('splitByStrength: nothing above the floor → nothing strong, order kept', () => {
-  const { strong, weak } = splitByStrength([page('a', 0.33), page('b', 0.2)], { minScore: 0.34, margin: 0.15 });
+test('splitByStrength: below the floor, a top page that leads the runner-up by the gap is strong', () => {
+  const lead = splitByStrength([page('a', 0.4), page('b', 0.24)], '', RULE);
+  assert.deepEqual(lead.strong.map((r) => r.host), ['a']);
+  const close = splitByStrength([page('a', 0.4), page('b', 0.3)], '', RULE);
+  assert.deepEqual(close.strong, [], 'a lead of 0.10 is not enough');
+  const alone = splitByStrength([page('a', 0.35)], '', RULE);
+  assert.deepEqual(alone.strong.map((r) => r.host), ['a'], 'a single result leads by its whole score');
+});
+
+test('splitByStrength: below the floor, a top page whose best passage holds most query words is strong', () => {
+  const results = [
+    pageWith('a', 0.36, 'Bleached coral turns white when the sea is warm.'),
+    page('b', 0.33),
+  ];
+  assert.deepEqual(splitByStrength(results, 'why does coral turn white', RULE).strong.map((r) => r.host), ['a']);
+  assert.deepEqual(splitByStrength(results, 'tax returns for freelancers', RULE).strong, [], 'no shared words');
+  assert.deepEqual(splitByStrength(results, '', RULE).strong, [], 'no query: scores only');
+});
+
+test('splitByStrength: nothing strong under the low floor, whatever stands out; empty input; order kept', () => {
+  const { strong, weak } = splitByStrength(
+    [pageWith('a', 0.29, 'coral white sea'), page('b', 0.05)],
+    'coral white sea',
+    RULE,
+  );
   assert.deepEqual(strong, []);
   assert.deepEqual(weak.map((r) => r.host), ['a', 'b']);
+  assert.deepEqual(splitByStrength([]), { strong: [], weak: [] });
 });
 
-test('splitByStrength: boundaries are inclusive; empty input; defaults are the measured constants', () => {
-  const { strong } = splitByStrength([page('a', 0.5), page('b', 0.35)], { minScore: 0.35, margin: 0.15 });
-  assert.deepEqual(strong.map((r) => r.host), ['a', 'b']);
-  assert.deepEqual(splitByStrength([]), { strong: [], weak: [] });
-  assert.equal(STRONG_MIN_SCORE, 0.34);
-  assert.equal(STRONG_MARGIN, 0.15);
-  const byDefault = splitByStrength([page('a', 0.6), page('b', 0.44), page('c', 0.33)]);
-  assert.deepEqual(byDefault.strong.map((r) => r.host), ['a'], 'b is 0.16 below the top; c under the floor');
+test('splitByStrength: if the top page is not strong, a lower page above the floor is not either', () => {
+  // Cannot happen with sorted input; guards the invariant "nothing strong without a strong top".
+  const { strong } = splitByStrength([page('a', 0.47), page('b', 0.46)], '', RULE);
+  assert.deepEqual(strong, []);
+});
+
+test('STRENGTH_RULE is the measured rule', () => {
+  assert.deepEqual(STRENGTH_RULE, RULE);
+});
+
+test('queryOverlap: share of query content words found in the passage', () => {
+  assert.equal(queryOverlap('why do corals turn white', 'The coral turns white.'), 1);
+  assert.equal(queryOverlap('coral reef temperature', 'A reef.'), 1 / 3);
+  assert.equal(queryOverlap('the and of', 'anything'), 0, 'stopwords only');
 });
 
 test('contentWords drops stopwords and short words and folds simple endings', () => {
@@ -228,5 +266,9 @@ test('omniboxSuggestions: strong pages only, linking to and showing the matched 
     out[0]!.content,
     'https://ocean.test/c#:~:text=When%20warm%20water%20lingers%20the%20reef%20turns%20white',
   );
-  assert.deepEqual(omniboxSuggestions([hit('https://x.test/', 0, 0.3)], 'anything'), [], 'nothing strong, nothing suggested');
+  assert.deepEqual(
+    omniboxSuggestions([hit('https://x.test/', 0, 0.3), hit('https://y.test/', 0, 0.28)], 'anything'),
+    [],
+    'nothing strong, nothing suggested',
+  );
 });

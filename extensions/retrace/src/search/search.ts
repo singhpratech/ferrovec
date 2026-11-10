@@ -101,7 +101,7 @@ function renderList(list: HTMLOListElement, results: PageResult[], query: string
  * collapsed disclosure, and a plain statement when nothing is strong.
  */
 function renderSearch(results: PageResult[], query: string): void {
-  const { strong, weak } = splitByStrength(results);
+  const { strong, weak } = splitByStrength(results, query);
   resultsHeading.textContent = 'Results';
   renderList(resultsEl, strong, query);
   renderList(weakEl, weak, query);
@@ -161,7 +161,7 @@ async function runSearch(): Promise<void> {
     refreshHostOptions(lastResults);
     const shown = filtered();
     renderSearch(shown, q);
-    const close = splitByStrength(shown).strong.length;
+    const close = splitByStrength(shown, q).strong.length;
     statusEl.textContent = `${close} close match${close === 1 ? '' : 'es'} in ${Math.round(performance.now() - started)} ms`;
   } catch (err) {
     if (seq !== searchSeq) return;

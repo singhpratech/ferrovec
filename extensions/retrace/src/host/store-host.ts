@@ -33,6 +33,7 @@ import {
   touchPage,
 } from '../lib/bookkeeping.ts';
 import { chunkText } from '../lib/chunk.ts';
+import { embeddingText, passageText, type EmbedFormat } from '../lib/embed.ts';
 import { chunkId } from '../lib/hash.ts';
 import type {
   ChunkMeta,
@@ -58,6 +59,8 @@ const LIST_PAGE = 1000;
  * have been replaced or removed, the host compacts before it goes idle.
  */
 export const COMPACT_AFTER_REPLACED = 2000;
+/** What is embedded per passage (see lib/embed.ts). */
+export const DEFAULT_EMBED_FORMAT: EmbedFormat = 'passage';
 const REPLACED_KEY = 'retrace.replacedSinceCompact';
 
 export class HostClosedError extends Error {
@@ -128,6 +131,8 @@ export class StoreHost {
     compactMs: [] as number[],
   };
   #persistent = false;
+  /** How passages are embedded; resolved when the store opens. */
+  #embedFormat: EmbedFormat = DEFAULT_EMBED_FORMAT;
 
   constructor(options: HostOptions) {
     this.#options = options;
@@ -198,6 +203,7 @@ export class StoreHost {
     while (this.#resetting) await this.#resetting.catch(() => undefined);
     this.#db ??= (async () => {
       const t0 = performance.now();
+      this.#embedFormat = embedFormatOverride() ?? DEFAULT_EMBED_FORMAT;
       const db = await Ferrovec.open(STORE_NAME, ferrovecOptions(this.#options.assetBase));
       this.#status.openMs = Math.round(performance.now() - t0);
       this.#persistent = db.persistent;
@@ -358,7 +364,10 @@ export class StoreHost {
         chunk: i,
         of,
       };
-      await db.insert(chunks[i]!.text, { id: chunkId(job.urlHash, i), metadata });
+      await db.insert(embeddingText(this.#embedFormat, job.title, chunks[i]!.text), {
+        id: chunkId(job.urlHash, i),
+        metadata,
+      });
     }
     // The page shrank: drop the passages past its new end.
     for (let i = of; i < (previous?.chunks ?? 0); i++) {
@@ -390,7 +399,7 @@ export class StoreHost {
     for (const row of rows) {
       const meta = row.metadata as ChunkMeta | undefined;
       if (!meta || typeof meta.url !== 'string') continue;
-      hits.push({ id: row.id, text: row.text ?? '', score: row.score, meta });
+      hits.push({ id: row.id, text: passageText(row.text ?? '', meta.title), score: row.score, meta });
     }
     const visits = await getPages([...new Set(hits.map((h) => h.meta.url))]);
     for (const hit of hits) {
@@ -470,7 +479,7 @@ export class StoreHost {
     const db = await this.#open();
     const passages = (await listAll(db)).map((row) => ({
       id: row.id,
-      text: row.text,
+      text: passageText(row.text, typeof row.metadata?.title === 'string' ? row.metadata.title : ''),
       ...(row.metadata ? { metadata: row.metadata } : {}),
     }));
     return {
@@ -528,6 +537,19 @@ export class StoreHost {
 function hostIs(host: string, wanted: string): boolean {
   const w = wanted.trim().toLowerCase();
   return w !== '' && (host === w || host.endsWith(`.${w}`));
+}
+
+/**
+ * `localStorage['retrace.embedFormat']` overrides the embed format; used only by
+ * the relevance measurement (test/relevance) to compare formats on a fresh store.
+ */
+function embedFormatOverride(): EmbedFormat | null {
+  try {
+    const v = localStorage.getItem('retrace.embedFormat');
+    return v === 'passage' || v === 'title' ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Replaced/removed passages since the last compaction (survives the host closing). */

@@ -21,7 +21,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { groupHits, splitByStrength, STRONG_MARGIN, STRONG_MIN_SCORE } from '../../src/lib/group.ts';
+import { groupHits, splitByStrength, STRENGTH_RULE } from '../../src/lib/group.ts';
 import type { Hit } from '../../src/lib/types.ts';
 import { ARTICLES, fixtureUrl } from './fixtures.ts';
 import { OUT, bg, extensionId, launch, startProxy } from './harness.ts';
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     const run = async (kind: Row['kind'], query: string, expected?: string): Promise<void> => {
       const hits = await bg<Hit[]>(ui, { kind: 'search', q: query, k: 60 });
       const pages = groupHits(hits);
-      const { strong } = splitByStrength(pages);
+      const { strong } = splitByStrength(pages, query);
       const ranked = pages.map((p) => ({ host: p.host, score: Math.round(p.score * 1000) / 1000 }));
       const row: Row = { kind, query, top: ranked[0]?.score ?? 0, ranked, strong: strong.map((p) => p.host) };
       if (expected) {
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     for (const q of VALIDATION_OFF) await run('valid-off', q);
 
     const fmt = (n: number | undefined): string => (n ?? 0).toFixed(3);
-    console.log(`thresholds: floor ${STRONG_MIN_SCORE}, margin ${STRONG_MARGIN}\n`);
+    console.log(`rule: ${JSON.stringify(STRENGTH_RULE)}\n`);
     for (const r of rows) {
       const detail =
         r.expected !== undefined

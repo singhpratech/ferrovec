@@ -111,6 +111,8 @@ One Linux desktop, single-threaded wasm. Your machine will differ.
 - Memory use has not been measured.
 - Tested up to about 2.9k passages. Every checkpoint rewrites a full snapshot, so cost grows with the store.
 - Single-page-app navigations are not re-captured.
+- What counts as a close match was measured on 35 real pages ([test/RELEVANCE.md](test/RELEVANCE.md)). On queries written after tuning: 84 % of close matches were the right page, 95 % of right pages were shown as close, and 7 of 10 questions about things not in the index showed nothing close. A question about a topic near something you read (the Sphinx, after reading about the Pyramids) can still show that page as close, and a loosely worded query for one of several similar pages (sibling chapters of a book) may show a sibling, or nothing close, with the page in the weaker list.
+- Only the first 12 passages (about 2,600 words) of a page are indexed.
 - Omnibox suggestions are not covered by the automated test.
 - Not on the Chrome Web Store.
 

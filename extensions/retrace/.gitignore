@@ -4,3 +4,5 @@ dist/
 models/
 # e2e / bench run output (profiles, logs, measurements)
 test/e2e/.out/
+test/relevance/.cache/
+test/relevance/.results/

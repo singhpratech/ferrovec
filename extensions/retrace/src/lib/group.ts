@@ -80,51 +80,68 @@ export function filterResults(results: readonly PageResult[], filter: ResultFilt
 // ---------------------------------------------------------------------------
 
 /**
- * A page is a strong match only if its best passage scores at least this
- * (cosine similarity, all-MiniLM-L6-v2 q8). Chosen from real scores on the
- * fixture articles (test/e2e/scores.ts, 26 queries):
+ * The strong/weak rule, for the top page and then the rest:
  *
- * - the page a query is about:            0.191 to 0.664 (median 0.437; all
- *   but one at 0.347 or more);
- * - the best other page, same queries:    0.097 to 0.263;
- * - the top page for off-topic queries:   0.027 to 0.326.
- *
- * The populations overlap (a terse paraphrase can score 0.19; a loosely
- * related off-topic query 0.33), so no floor is perfect. 0.34 sits between
- * the highest off-topic score and the lowest typical match: it errs towards
- * calling a match weak, and weak matches are still shown, behind a
- * disclosure.
+ * - The top page is strong when its score clears `floor`; or, below that,
+ *   when it clears `lowFloor` AND clearly stands out: it leads the runner-up
+ *   page by at least `minGap`, or its best passage contains at least
+ *   `minOverlap` of the query's content words (see {@link queryOverlap}).
+ * - Every other page is strong only if it clears `floor` and is within
+ *   `margin` of the top score.
+ * - If the top page is not strong, nothing is.
  */
-export const STRONG_MIN_SCORE = 0.34;
-/**
- * ...and within this much of the best page's score. On the fixtures every
- * non-matching page already falls under the floor, so this was not tuned by
- * them: it keeps several near-equal pages on one topic strong while dropping
- * pages clearly below the best one.
- */
-export const STRONG_MARGIN = 0.15;
+export interface StrengthRule {
+  floor: number;
+  lowFloor: number;
+  minGap: number;
+  minOverlap: number;
+  margin: number;
+}
 
-export interface Strength {
-  minScore?: number;
-  margin?: number;
+/**
+ * Chosen from real-content measurements (35 real pages, test/relevance);
+ * test/RELEVANCE.md has the data, the method and held-out precision/recall.
+ */
+export const STRENGTH_RULE: StrengthRule = {
+  floor: 0.48,
+  lowFloor: 0.3,
+  minGap: 0.15,
+  minOverlap: 0.6,
+  margin: 0.05,
+};
+
+/** Share of the query's content words that occur in `passage` (0 for a query with none). */
+export function queryOverlap(query: string, passage: string): number {
+  const q = contentWords(query);
+  if (q.size === 0) return 0;
+  const p = contentWords(passage);
+  let n = 0;
+  for (const w of q) if (p.has(w)) n++;
+  return n / q.size;
 }
 
 /**
  * Split ranked results (best first, as {@link groupHits} returns them) into
  * strong matches, shown as results, and weak ones, offered behind a
- * disclosure. A result is strong when it clears the absolute floor AND is
- * within the margin of the top score; order is kept within each part.
+ * disclosure. Order is kept within each part. `query` feeds the word-overlap
+ * signal; without it only the scores count.
  */
 export function splitByStrength(
   results: readonly PageResult[],
-  strength: Strength = {},
+  query = '',
+  rule: StrengthRule = STRENGTH_RULE,
 ): { strong: PageResult[]; weak: PageResult[] } {
-  const minScore = strength.minScore ?? STRONG_MIN_SCORE;
-  const margin = strength.margin ?? STRONG_MARGIN;
-  const top = Math.max(-Infinity, ...results.map((r) => r.score));
-  const strong: PageResult[] = [];
+  const [top, second] = results;
+  if (!top) return { strong: [], weak: [] };
+  const gap = top.score - (second?.score ?? 0);
+  const standsOut = gap >= rule.minGap || (query !== '' && queryOverlap(query, top.snippet) >= rule.minOverlap);
+  const topStrong = top.score >= rule.floor || (top.score >= rule.lowFloor && standsOut);
+  if (!topStrong) return { strong: [], weak: [...results] };
+  const strong: PageResult[] = [top];
   const weak: PageResult[] = [];
-  for (const r of results) (r.score >= minScore && r.score >= top - margin ? strong : weak).push(r);
+  for (const r of results.slice(1)) {
+    (r.score >= rule.floor && r.score >= top.score - rule.margin ? strong : weak).push(r);
+  }
   return { strong, weak };
 }
 
@@ -219,7 +236,7 @@ export interface Suggestion {
 
 /** Address-bar suggestions for `query`: strong matches only, best first. */
 export function omniboxSuggestions(hits: readonly Hit[], query: string, max = 5): Suggestion[] {
-  const { strong } = splitByStrength(groupHits(hits));
+  const { strong } = splitByStrength(groupHits(hits), query);
   return strong.slice(0, max).map((p) => {
     const snippet = snippetFor(p.snippet, query, 120);
     return {

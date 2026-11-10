@@ -11,6 +11,7 @@ import { Readability } from '@mozilla/readability';
 
 import { isBlocked } from './lib/blocklist.ts';
 import { MAX_TEXT_CHARS, MIN_TEXT_CHARS } from './lib/settings.ts';
+import type { Settings } from './lib/types.ts';
 import { loadSettings, sendToBackground } from './platform/index.ts';
 
 const BLOCK_TAGS = new Set([
@@ -64,17 +65,28 @@ function extract(): { title: string; text: string } {
   return { title, text };
 }
 
-async function run(): Promise<void> {
+/**
+ * Settings are read as soon as the script is injected, so that the work below
+ * can run synchronously up to the point the message is posted: a tab closed
+ * before the browser was idle still gets its page sent from `pagehide`.
+ */
+let settings: Settings | null = null;
+const settingsReady = loadSettings().then((s) => {
+  settings = s;
+  return s;
+});
+
+/** Extract and post the page; synchronous once settings are known. */
+function collectAndSend(current: Settings): void {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
   if (window.top !== window) return;
   if (!/html/i.test(document.contentType)) return;
   if (document.querySelector('input[type="password" i]')) return;
-  const settings = await loadSettings();
-  if (settings.paused || isBlocked(location.href, settings.blocklist)) return;
+  if (current.paused || isBlocked(location.href, current.blocklist)) return;
 
   const { title, text } = extract();
   if (text.length < MIN_TEXT_CHARS) return;
-  await sendToBackground({
+  sendToBackground({
     kind: 'page',
     page: {
       url: location.href,
@@ -82,6 +94,9 @@ async function run(): Promise<void> {
       text: text.slice(0, MAX_TEXT_CHARS),
       lang: document.documentElement.lang || '',
     },
+  }).catch((err: unknown) => {
+    // The extension was reloaded or the service worker is unavailable: skip this page.
+    console.debug('[retrace] page not sent', err);
   });
 }
 
@@ -89,10 +104,11 @@ let started = false;
 const start = (): void => {
   if (started) return;
   started = true;
-  run().catch((err: unknown) => {
-    // The extension was reloaded or the service worker is unavailable: skip this page.
-    console.debug('[retrace] page not sent', err);
-  });
+  if (settings) {
+    collectAndSend(settings);
+    return;
+  }
+  settingsReady.then(collectAndSend, (err: unknown) => console.debug('[retrace] no settings', err));
 };
 if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 3000 });
 else setTimeout(start, 500);
