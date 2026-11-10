@@ -299,12 +299,12 @@ async function main(): Promise<void> {
   }
   results.queries = queryResults;
 
-  // A topic no fixture is about: nothing strong, said plainly, weaker pages still offered.
+  // A topic no fixture is about: nothing strong, said plainly, nearest pages shown open.
   const offTopicQuery = 'best way to train for a marathon in sixteen weeks';
   const offTopic = await searchUi(ui, id, offTopicQuery);
   check(
     `off-topic "${offTopicQuery}" → zero strong results, "Nothing you have read matches closely"`,
-    offTopic.strong.length === 0 && offTopic.noStrongShown && offTopic.weak.length > 0 && offTopic.weakCollapsed,
+    offTopic.strong.length === 0 && offTopic.noStrongShown && offTopic.weak.length > 0 && !offTopic.weakCollapsed,
     `weak: ${fmt(offTopic.weak.slice(0, 3))}…`,
   );
   results.offTopic = { query: offTopicQuery, strong: offTopic.strong, weak: offTopic.weak };

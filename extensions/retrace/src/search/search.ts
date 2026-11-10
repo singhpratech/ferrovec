@@ -98,7 +98,8 @@ function renderList(list: HTMLOListElement, results: PageResult[], query: string
 
 /**
  * Show search results: strong matches as results, weak ones behind a
- * collapsed disclosure, and a plain statement when nothing is strong.
+ * disclosure (collapsed, or open as "nearest pages" when nothing is strong),
+ * and a plain statement when nothing is strong.
  */
 function renderSearch(results: PageResult[], query: string): void {
   const { strong, weak } = splitByStrength(results, query);
@@ -107,8 +108,12 @@ function renderSearch(results: PageResult[], query: string): void {
   renderList(weakEl, weak, query);
   noStrongEl.hidden = strong.length > 0 || weak.length === 0;
   weakerEl.hidden = weak.length === 0;
-  weakerEl.open = false;
-  weakerSummary.textContent = `${weak.length} weaker match${weak.length === 1 ? '' : 'es'}`;
+  // With no close match the nearest pages are the whole answer, so show them.
+  weakerEl.open = strong.length === 0;
+  weakerSummary.textContent =
+    strong.length === 0
+      ? `Nearest ${weak.length === 1 ? 'page' : `${weak.length} pages`}`
+      : `${weak.length} weaker match${weak.length === 1 ? '' : 'es'}`;
   emptyEl.hidden = results.length > 0;
   emptyEl.textContent = 'Nothing you have read matches that yet.';
 }
