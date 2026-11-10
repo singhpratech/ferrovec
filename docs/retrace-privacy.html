@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrace privacy policy</title>
+<meta name="description" content="What the Retrace browser extension stores, where it stores it, and how to delete it.">
+<link rel="icon" href="assets/favicon-32.png">
+<style>
+  :root { --paper:#F6F3EE; --ink:#201D18; --ink-soft:#58524A; --line:#DDD7CD; --accent:#C13A15; --code-bg:#EBE7DE; }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper:#14120F; --ink:#EBE6DC; --ink-soft:#A7A093; --line:#2E2922; --accent:#EC6236; --code-bg:#1E1A15; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:1.06rem/1.65 Georgia, "Times New Roman", serif; }
+  main { max-width: 44rem; margin: 0 auto; padding: 3rem 16px 5rem; }
+  h1 { font-size: 2rem; line-height:1.2; margin: 0 0 .4rem; }
+  h2 { font-size: 1.25rem; margin: 2.2rem 0 .5rem; }
+  p, li { color: var(--ink-soft); }
+  .meta { font: .85rem ui-monospace, monospace; color: var(--ink-soft); border-bottom:1px solid var(--line); padding-bottom:1.2rem; }
+  a { color: var(--accent); }
+  code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; font-size: .92em; }
+  strong { color: var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Retrace privacy policy</h1>
+  <p class="meta">Applies to the Retrace browser extension, version 0.1.0 and later. Last updated 10 November 2026.</p>
+
+  <p><strong>Retrace sends nothing anywhere.</strong> It has no server, no account, no analytics and no advertising. Everything it stores stays inside your browser profile on your own device. The author never receives any of it.</p>
+
+  <h2>What Retrace stores</h2>
+  <ul>
+    <li>The readable text of web pages you open, split into passages.</li>
+    <li>For each page: its address, title, site name and the time you visited.</li>
+    <li>A numeric fingerprint of each passage, computed on your device, that makes search by meaning possible.</li>
+    <li>Your settings: the paused state and your list of blocked sites.</li>
+  </ul>
+
+  <h2>What Retrace does not store</h2>
+  <ul>
+    <li>Pages opened in incognito windows. The extension does not run there.</li>
+    <li>Any page that contains a password field.</li>
+    <li>Sites on the blocklist. By default this covers banking and payments, webmail and messaging, health, and sign-in sites. You can edit the list.</li>
+    <li>Pages with very little text, and pages that are not <code>http</code> or <code>https</code>.</li>
+    <li>Passwords, form entries, cookies or keystrokes.</li>
+  </ul>
+
+  <h2>Where it is stored</h2>
+  <p>In your browser's private storage for this extension, on your device. It is not synced to other devices and is not readable by websites.</p>
+
+  <h2>Network use</h2>
+  <p>Retrace makes no network requests. The search model is included inside the extension, so nothing is downloaded when it runs. This is checked by an automated test in the public source code.</p>
+
+  <h2>Sharing</h2>
+  <p>Nothing is shared, sold or transferred to anyone, because nothing leaves your device.</p>
+
+  <h2>Your controls</h2>
+  <ul>
+    <li><strong>Pause</strong> stops all capture until you resume.</li>
+    <li><strong>Forget this site</strong> and <strong>Forget the last hour</strong> remove matching pages.</li>
+    <li><strong>Delete everything</strong> empties the store.</li>
+    <li><strong>Export</strong> gives you a copy of what is stored.</li>
+    <li>Removing the extension deletes all of its data.</li>
+  </ul>
+  <p>Forgetting rewrites the search store so the removed text is gone from its files. The small record of a page's address and title is deleted too, but the browser's own database may keep those bytes on disk for a while until it tidies up. Your browser's own history and cache are separate from Retrace.</p>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><strong>Read pages you visit</strong>: needed to capture the text you read.</li>
+    <li><strong>Storage and unlimited storage</strong>: needed to keep the search store on your device.</li>
+    <li><strong>Offscreen</strong>: needed to run the search engine in the background.</li>
+  </ul>
+
+  <h2>Source code and contact</h2>
+  <p>Retrace is open source: <a href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">github.com/singhpratech/ferrovec</a>. Questions and reports go to the <a href="https://github.com/singhpratech/ferrovec/issues">issue tracker</a>.</p>
+  <p>If this policy changes, the new version will be published at this address with a new date.</p>
+</main>
+</body>
+</html>
