@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Retrace",
+  "version": "0.1.0",
+  "description": "Semantic search over every page you have read. Stored only in your browser. No account, no server, no API key.",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Retrace: search what you have read",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "omnibox": {
+    "keyword": "rt"
+  },
+  "options_ui": {
+    "page": "search.html#privacy",
+    "open_in_tab": true
+  },
+  "permissions": ["storage", "unlimitedStorage", "offscreen"],
+  "incognito": "not_allowed",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}

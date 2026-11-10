@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Retrace</title>
+    <link rel="icon" href="/icons/icon-32.png" />
+    <link rel="stylesheet" href="/src/search/search.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="brand">
+        <img src="/icons/icon-48.png" alt="" width="28" height="28" />
+        <h1>Retrace</h1>
+      </div>
+      <p class="tagline">Every page you have read, searchable. Stored only in this browser.</p>
+    </header>
+
+    <main>
+      <section class="search" aria-label="Search">
+        <form id="search-form" role="search">
+          <label class="visually-hidden" for="q">What do you remember?</label>
+          <input
+            id="q"
+            name="q"
+            type="search"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="What do you remember reading?"
+            autofocus
+          />
+        </form>
+        <div class="filters">
+          <label>
+            <span>Site</span>
+            <select id="filter-host">
+              <option value="">All sites</option>
+            </select>
+          </label>
+          <label>
+            <span>When</span>
+            <select id="filter-time">
+              <option value="any">Any time</option>
+              <option value="day">Past day</option>
+              <option value="week">Past week</option>
+              <option value="month">Past month</option>
+              <option value="year">Past year</option>
+            </select>
+          </label>
+          <p id="status" class="status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section aria-label="Results">
+        <h2 id="results-heading" class="section-label">Recently read</h2>
+        <ol id="results" class="results"></ol>
+        <p id="empty" class="empty" hidden></p>
+      </section>
+
+      <section id="privacy" class="privacy" aria-labelledby="privacy-heading">
+        <h2 id="privacy-heading">Privacy</h2>
+        <p class="lede">
+          Retrace reads the text of http(s) pages you visit, turns it into passages and stores them
+          with a small embedding model, all inside this browser profile. Nothing is sent anywhere.
+        </p>
+
+        <dl id="stats" class="stats">
+          <div><dt>Pages</dt><dd data-stat="pages">-</dd></div>
+          <div><dt>Passages</dt><dd data-stat="passages">-</dd></div>
+          <div><dt>Index on disk</dt><dd data-stat="storeBytes">-</dd></div>
+          <div><dt>All Retrace data</dt><dd data-stat="usageBytes">-</dd></div>
+        </dl>
+
+        <div class="control">
+          <div>
+            <h3>Indexing</h3>
+            <p id="pause-state">Pages you read are being indexed.</p>
+          </div>
+          <button id="pause" type="button">Pause indexing</button>
+        </div>
+
+        <div class="control stacked">
+          <div>
+            <h3>Never index these sites</h3>
+            <p>
+              One host per line. <code>example.com</code> also covers its subdomains;
+              <code>*</code> matches anything (<code>*bank*</code>, <code>login.*</code>). Pages with a
+              password field are never indexed.
+            </p>
+          </div>
+          <textarea id="blocklist" rows="10" spellcheck="false" aria-label="Blocked sites"></textarea>
+          <div class="row">
+            <button id="blocklist-save" type="button">Save list</button>
+            <button id="blocklist-reset" type="button" class="quiet">Restore defaults</button>
+            <span id="blocklist-note" class="note" role="status"></span>
+          </div>
+        </div>
+
+        <div class="control stacked">
+          <div>
+            <h3>Forget</h3>
+            <p>Removes passages from the index itself, not just from results.</p>
+          </div>
+          <form id="forget-site-form" class="row">
+            <label class="visually-hidden" for="forget-host">Site to forget</label>
+            <input id="forget-host" type="text" placeholder="example.com" autocomplete="off" />
+            <button type="submit">Forget this site</button>
+          </form>
+          <div class="row">
+            <button id="forget-hour" type="button">Forget the last hour</button>
+            <button id="delete-all" type="button" class="danger">Delete everything</button>
+          </div>
+          <p id="forget-note" class="note" role="status"></p>
+        </div>
+
+        <div class="control">
+          <div>
+            <h3>Export</h3>
+            <p>Download every page and passage as JSON.</p>
+          </div>
+          <button id="export" type="button">Export JSON</button>
+        </div>
+      </section>
+    </main>
+
+    <template id="result-template">
+      <li class="result">
+        <a class="title"></a>
+        <p class="meta"><span class="host"></span><span class="when"></span><span class="more"></span></p>
+        <p class="snippet"></p>
+        <button type="button" class="forget-link quiet">Forget this site</button>
+      </li>
+    </template>
+
+    <script type="module" src="/src/search/search.ts"></script>
+  </body>
+</html>
