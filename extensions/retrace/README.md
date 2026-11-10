@@ -84,7 +84,7 @@ Run in Playwright Chromium (new headless, `--load-extension`):
 | Check | Result |
 | --- | --- |
 | End-to-end checks | 36 of 36 pass |
-| Unit tests | 44 of 44 pass |
+| Unit tests | 50 of 50 pass |
 | 8 paraphrased queries over 8 fixture articles | right page first every time |
 | Reopen after a browser restart | results persist |
 | Blocked host, password page, paused state | not indexed |
