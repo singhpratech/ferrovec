@@ -8,7 +8,7 @@ Ferrovec Retrace is a Chrome (Manifest V3) extension built on [ferrovec](../../R
 
 <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp"><img alt="Ferrovec Retrace on the Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/jjniajgebegicfkjhehinaoplanmkfgp?logo=googlechrome&logoColor=white&label=Ferrovec%20Retrace%20on%20Chrome%20Web%20Store&color=4285F4" /></a>
 
-Status: version 0.1.0, **[on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp)**. You can also load it unpacked (see below).
+Status: version 0.1.1, **[on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp)**. You can also load it unpacked (see below).
 
 ## Install
 

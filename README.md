@@ -40,7 +40,7 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 
 **[Ferrovec Retrace](./extensions/retrace)** is a Chrome extension that gives you semantic search over every page you have read. Type `rt` and a few words you remember in the address bar, and it finds the page.
 Everything stays in your browser: the text, the vectors and the embedding model are all local, with no account, server or API key. In an automated run, the browser made zero requests initiated by the extension.
-It is version 0.1.0. Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp), or load the zip `ferrovec-retrace-0.1.1-chromium.zip` from the [Ferrovec Retrace 0.1.1 release](https://github.com/singhpratech/ferrovec/releases/tag/retrace-v0.1.1) unpacked. Read the [Ferrovec Retrace README](./extensions/retrace) for install steps, privacy controls, measured numbers and limits.
+It is version 0.1.1. Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp), or load the zip `ferrovec-retrace-0.1.1-chromium.zip` from the [Ferrovec Retrace 0.1.1 release](https://github.com/singhpratech/ferrovec/releases/tag/retrace-v0.1.1) unpacked. Read the [Ferrovec Retrace README](./extensions/retrace) for install steps, privacy controls, measured numbers and limits.
 
 Building it needed two library changes, both since `0.6.0`: the [`transformers` option](./js/README.md#offline-local-model-and-wasm-files) and the JS [`db.compact()`](./js/README.md#three-line-api) (documented [below](#offline-model-files-and-dbcompact-since-060)).
 
