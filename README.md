@@ -15,7 +15,7 @@
   <a href="https://www.npmjs.com/package/ferrovec"><img alt="npm" src="https://img.shields.io/npm/v/ferrovec?logo=npm&label=npm&color=CB3837" /></a>
   <a href="https://docs.rs/ferrovec"><img alt="docs.rs" src="https://img.shields.io/docsrs/ferrovec?logo=docsdotrs&label=docs.rs" /></a>
   <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-77%20KB%20%7C%2035%20KB%20gzip-5B48D8" /></a>
-  <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp"><img alt="Retrace on the Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/jjniajgebegicfkjhehinaoplanmkfgp?logo=googlechrome&logoColor=white&label=Retrace%20on%20Chrome%20Web%20Store&color=4285F4" /></a>
+  <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp"><img alt="Ferrovec Retrace on the Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/jjniajgebegicfkjhehinaoplanmkfgp?logo=googlechrome&logoColor=white&label=Ferrovec%20Retrace%20on%20Chrome%20Web%20Store&color=4285F4" /></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/crates/l/ferrovec" /></a>
 </p>
 
@@ -28,28 +28,28 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 - 🪶 **Featherweight & shim-free** — `serde` + `postcard` are the *only* dependencies; the WASM core is 77 KB (35 KB gzipped), with no `getrandom` (deterministic splitmix64 PRNG) and no threads, so it's happy on bare `wasm32-unknown-unknown`.
 - ⚡ **SIMD-accelerated** distance on `wasm32 + simd128` with a scalar fallback; `#![deny(unsafe_code)]` everywhere outside the audited kernel. Portable versioned byte format reloads identically native or in-browser.
 
-## Built with ferrovec: Retrace
+## Built with ferrovec: Ferrovec Retrace
 
 <p align="center">
-  <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp"><img alt="Retrace on the Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/jjniajgebegicfkjhehinaoplanmkfgp?logo=googlechrome&logoColor=white&label=Retrace%20on%20Chrome%20Web%20Store&color=4285F4" /></a>
+  <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp"><img alt="Ferrovec Retrace on the Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/jjniajgebegicfkjhehinaoplanmkfgp?logo=googlechrome&logoColor=white&label=Ferrovec%20Retrace%20on%20Chrome%20Web%20Store&color=4285F4" /></a>
 </p>
 
 <p align="center">
-  <a href="./extensions/retrace"><img src="https://raw.githubusercontent.com/singhpratech/ferrovec/main/docs/assets/retrace-light.png" alt="Retrace search page showing results for a remembered article" width="760" /></a>
+  <a href="./extensions/retrace"><img src="https://raw.githubusercontent.com/singhpratech/ferrovec/main/docs/assets/retrace-light.png" alt="Ferrovec Retrace search page showing results for a remembered article" width="760" /></a>
 </p>
 
-**[Retrace](./extensions/retrace)** is a Chrome extension that gives you semantic search over every page you have read. Type `rt` and a few words you remember in the address bar, and it finds the page.
+**[Ferrovec Retrace](./extensions/retrace)** is a Chrome extension that gives you semantic search over every page you have read. Type `rt` and a few words you remember in the address bar, and it finds the page.
 Everything stays in your browser: the text, the vectors and the embedding model are all local, with no account, server or API key. In an automated run, the browser made zero requests initiated by the extension.
-It is version 0.1.0. Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp), or load the zip `retrace-0.1.0-chromium.zip` from the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0) unpacked. Read the [Retrace README](./extensions/retrace) for install steps, privacy controls, measured numbers and limits.
+It is version 0.1.0. Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp), or load the zip `retrace-0.1.0-chromium.zip` from the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0) unpacked. Read the [Ferrovec Retrace README](./extensions/retrace) for install steps, privacy controls, measured numbers and limits.
 
 Building it needed two library changes, both since `0.6.0`: the [`transformers` option](./js/README.md#offline-local-model-and-wasm-files) and the JS [`db.compact()`](./js/README.md#three-line-api) (documented [below](#offline-model-files-and-dbcompact-since-060)).
 
-> **Status — both registries are on `0.6.0`.** crates.io `0.6.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.6.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), crash-safe storage (**M7**, `0.4.0`): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox, per-document metadata, a LangChain.js adapter and a local RAG example (**M8**, `0.5.0`), and, new in `0.6.0`, offline model loading, `db.compact()` and the Retrace extension (**M9**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
+> **Status — both registries are on `0.6.0`.** crates.io `0.6.0` ships the Rust core (**M1**), WASM boundary (**M2**), and in-place [compaction](#compaction--clearing); npm `0.6.0` ships the full browser package: transformers.js auto-embedding (**M3**), OPFS persistence (**M4**), the three-line API (**M5**), cross-tab single-writer leader election (**M6**), crash-safe storage (**M7**, `0.4.0`): checksummed snapshots, a write-ahead log, and a published [kill-the-tab chaos suite](https://singhpratech.github.io/ferrovec/chaos.html) with zero acknowledged writes lost over 1,000 cycles each in Chromium and Firefox, per-document metadata, a LangChain.js adapter and a local RAG example (**M8**, `0.5.0`), and, new in `0.6.0`, offline model loading, `db.compact()` and the Ferrovec Retrace extension (**M9**). See the [roadmap](#roadmap), or **[try the live demo](https://singhpratech.github.io/ferrovec/demo.html)**.
 
 > **New in 0.6.0**
 > - **Offline and extension-ready** : the `transformers` option on `Ferrovec.open` points transformers.js at local model files and a local onnxruntime wasm, so ferrovec runs with no network and inside a Manifest V3 extension; see [Offline model files and `db.compact()`](#offline-model-files-and-dbcompact-since-060).
 > - **`db.compact()`** : removed and replaced documents leave the store's files, not only its results. The on-disk format is unchanged, so `0.6.0` reads and writes the same stores as `0.5.0`.
-> - **Retrace** : a Chromium extension built on ferrovec, [`extensions/retrace`](./extensions/retrace), now [on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp).
+> - **Ferrovec Retrace** : a Chromium extension built on ferrovec, [`extensions/retrace`](./extensions/retrace), now [on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp).
 >
 > `0.5.0` added per-document metadata, the [LangChain.js adapter](#langchainjs) and the [local RAG example](./examples/ai-sdk-local-rag).
 
@@ -60,7 +60,7 @@ ferrovec is for apps where the vectors in the browser are the **only copy**, and
 - **Local-first notes, journals, and PKM tools.** The user types a note, sees it saved, and closes the lid. The acknowledged insert survives a tab kill; the next open replays the log. No sync server, no re-embedding on launch.
 - **Offline field apps.** Inspection, clinical, survey, or agricultural tools that run for hours without a network and get force-closed by the OS. Semantic search over what was captured has to survive that.
 - **Privacy-bound RAG.** Chat-with-your-documents for legal, HR, health, or internal docs where nothing may leave the device. Embedding a large corpus takes minutes; a checksummed, crash-tested index turns that one-time ingest into a durable asset. Runnable example: [`examples/ai-sdk-local-rag`](./examples/ai-sdk-local-rag) pairs ferrovec with the Vercel AI SDK and a local OpenAI-compatible model (Ollama by default).
-- **Browser extensions with memory.** Tab-history search, reading-list recall, "what did I see about X last week". Extensions are killed and restarted constantly; the write-ahead log is what makes *remembered* true. [Retrace](./extensions/retrace) is a working example: a Chrome extension that indexes the pages you read and searches them from the address bar.
+- **Browser extensions with memory.** Tab-history search, reading-list recall, "what did I see about X last week". Extensions are killed and restarted constantly; the write-ahead log is what makes *remembered* true. [Ferrovec Retrace](./extensions/retrace) is a working example: a Chrome extension that indexes the pages you read and searches them from the address bar.
 - **Multi-tab dashboards.** Support consoles, CRMs, admin tools where one user has five tabs open and each inserts and searches. One elected leader, one consistent store, no diverging indexes.
 - **Kiosks, edge, and PWA devices with no backend.** They reboot unexpectedly and nobody is there to re-ingest. Open picks the newest valid snapshot, refuses a corrupt one with a typed error, and the app decides what to do.
 - **Agent memory in the tab.** Assistants that accumulate episodic memory over weeks. The embedding-space guard refuses to open a store under a different model instead of silently returning wrong neighbours.
@@ -359,7 +359,7 @@ cargo build --target wasm32-unknown-unknown
 | **M6** | Cross-tab leader election (Web Locks) | ✅ `0.4.0` |
 | **M7** | Crash-safe storage — checksummed A/B snapshots, write-ahead log, kill-the-tab chaos suite | ✅ `0.4.0` |
 | **M8** | Per-document metadata + LangChain.js adapter + local RAG example | ✅ `0.5.0` |
-| **M9** | Offline model loading + compact() + Retrace extension | ✅ `0.6.0` |
+| **M9** | Offline model loading + compact() + Ferrovec Retrace extension | ✅ `0.6.0` |
 
 > Both registries are published at **`0.6.0`** — crates.io (Rust core) and npm (browser package).
 

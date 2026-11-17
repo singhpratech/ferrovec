@@ -215,7 +215,7 @@
       <a href="#vision">Vision</a>
       <a href="#story">Story</a>
       <a href="#what">Features</a>
-      <a href="#retrace">Retrace</a>
+      <a href="#retrace">Ferrovec Retrace</a>
       <a href="#how">Architecture</a>
       <a href="#compare">Compare</a>
       <a href="#roadmap">Roadmap</a>
@@ -247,7 +247,7 @@
       <ul>
         <li><a href="https://github.com/singhpratech/ferrovec/blob/main/js/README.md#offline-local-model-and-wasm-files">Offline and extension-ready</a>: the <code>transformers</code> option loads local model files</li>
         <li><a href="https://github.com/singhpratech/ferrovec/blob/main/js/README.md#three-line-api"><code>db.compact()</code></a>: removed documents leave the store's files</li>
-        <li><a href="#retrace">Retrace</a>: a Chromium extension on ferrovec, <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp">on the Chrome Web Store</a></li>
+        <li><a href="#retrace">Ferrovec Retrace</a>: a Chromium extension on ferrovec, <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp">on the Chrome Web Store</a></li>
       </ul>
     </div>
 
@@ -332,7 +332,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
 <section class="band alt" id="retrace">
   <div class="wrap">
     <p class="eyebrow">Built with ferrovec</p>
-    <h2>Retrace: search everything you have read</h2>
+    <h2>Ferrovec Retrace: search everything you have read</h2>
     <div class="retrace-grid">
       <div>
         <p class="section-lede" style="margin-bottom:0;">A Chrome extension that remembers the pages you read and finds them by meaning. Type <code>rt</code> and a few words you remember in the address bar. The text, the vectors and the embedding model all stay in your browser, with no account, server or API key.</p>
@@ -342,13 +342,13 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
           <li>On one desktop: queries at 2.8k passages took 19 ms (p50) and 26 ms (p95). 36 of 36 end-to-end checks pass.</li>
           <li>Version 0.1.0, <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp">on the Chrome Web Store</a>. A zip to load unpacked, <code>retrace-0.1.0-chromium.zip</code>, is on the <a href="https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0">v0.6.0 release</a>. Chrome is tested; Edge and Brave are expected to work but untested.</li>
         </ul>
-        <a class="btn btn-primary" href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Retrace on GitHub →</a>
+        <a class="btn btn-primary" href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Ferrovec Retrace on GitHub →</a>
         <p class="retrace-note">Building it added two library features, <code>transformers</code> (offline model files) and <code>db.compact()</code>. Both shipped in ferrovec 0.6.0.</p>
       </div>
       <figure class="retrace-shot">
         <picture>
           <source media="(prefers-color-scheme: dark)" srcset="./assets/retrace-dark.png" />
-          <img src="./assets/retrace-light.png" alt="Retrace search page showing grouped results for a remembered article" loading="lazy" />
+          <img src="./assets/retrace-light.png" alt="Ferrovec Retrace search page showing grouped results for a remembered article" loading="lazy" />
         </picture>
       </figure>
     </div>
@@ -425,7 +425,7 @@ index.<span class="f">insert</span>(<span class="s">'doc-1'</span>, embedding); 
       <div class="mile"><span class="mid">M6</span><div><h4>Cross-tab leader election <span class="status done">0.4.0</span></h4><p>Web Locks + BroadcastChannel single-writer election: one leader tab owns the store, followers proxy through it, and on close/crash a follower is promoted — verified with a real two-page headless failover test.</p></div></div>
       <div class="mile"><span class="mid">M7</span><div><h4>Crash-safe storage <span class="status done">0.4.0</span></h4><p>CRC-32 checksummed snapshots in two alternating slot files, a write-ahead log flushed before every acknowledgement, and a <a href="chaos.html">published kill-the-tab chaos suite</a>: 1,000 cycles each in Chromium and Firefox, zero acknowledged writes lost.</p></div></div>
       <div class="mile"><span class="mid">M8</span><div><h4>Metadata + LangChain.js + local RAG <span class="status done">0.5.0</span></h4><p>Per-document JSON metadata stored under the same write-ahead log and checksummed snapshots, a LangChain.js <code>VectorStore</code> adapter, and a <a href="https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag">local RAG example</a> built on the Vercel AI SDK.</p></div></div>
-      <div class="mile"><span class="mid">App</span><div><h4>Retrace extension <span class="status done">0.6.0</span></h4><p>A Chrome extension on ferrovec: semantic search over pages you have read, stored only in the browser. Needed offline <code>transformers</code> config and <code>db.compact()</code>, both in 0.6.0. Load it unpacked from the <a href="https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0">release zip</a>. <a href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Code and numbers</a>.</p></div></div>
+      <div class="mile"><span class="mid">App</span><div><h4>Ferrovec Retrace extension <span class="status done">0.6.0</span></h4><p>A Chrome extension on ferrovec: semantic search over pages you have read, stored only in the browser. Needed offline <code>transformers</code> config and <code>db.compact()</code>, both in 0.6.0. Load it unpacked from the <a href="https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0">release zip</a>. <a href="https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace">Code and numbers</a>.</p></div></div>
     </div>
   </div>
 </section>

@@ -222,7 +222,7 @@ export async function showPausedBadge(paused: boolean): Promise<void> {
   await chrome.action.setBadgeText({ text: paused ? 'off' : '' });
   await chrome.action.setBadgeBackgroundColor({ color: '#6b6b6b' });
   await chrome.action.setTitle({
-    title: paused ? 'Retrace (indexing paused)' : 'Retrace: search what you have read',
+    title: paused ? 'Ferrovec Retrace (indexing paused)' : 'Ferrovec Retrace: search what you have read',
   });
 }
 
@@ -252,7 +252,7 @@ export function registerOmnibox(handlers: {
   enter: (text: string, disposition: Disposition) => void;
 }): void {
   chrome.omnibox.setDefaultSuggestion({
-    description: 'Search what you have read: <match>%s</match> (Enter for all results)',
+    description: 'Ferrovec Retrace: search what you have read for <match>%s</match> (Enter for all results)',
   });
   let latest = 0;
   chrome.omnibox.onInputChanged.addListener((text, suggest) => {

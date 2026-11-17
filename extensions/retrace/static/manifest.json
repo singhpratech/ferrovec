@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Retrace",
-  "version": "0.1.0",
+  "name": "Ferrovec Retrace: Semantic Search for Pages You've Read",
+  "short_name": "Ferrovec Retrace",
+  "version": "0.1.1",
   "description": "Semantic search over every page you have read. Stored only in your browser. No account, no server, no API key.",
   "minimum_chrome_version": "116",
   "icons": {
@@ -11,7 +12,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Retrace: search what you have read",
+    "default_title": "Ferrovec Retrace: search what you have read",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"

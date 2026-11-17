@@ -31,7 +31,7 @@ thread, across reloads, across tabs. Nothing leaves the device.
 > **New in 0.6.0**
 > - **Offline and extension-ready** : the `transformers` option on `Ferrovec.open` / `Engine.create` / `createTransformersEmbedder` serves the model and the onnxruntime wasm from local files, so ferrovec runs with no network and inside a Manifest V3 extension; see [Offline: local model and wasm files](#offline-local-model-and-wasm-files).
 > - **`db.compact()`** : removed and replaced documents leave the store's files, not only its results; see [Three-line API](#three-line-api). The on-disk format is unchanged from `0.5.0`.
-> - **Retrace** : a Chromium extension built on ferrovec, [`extensions/retrace`](https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace), now [on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp).
+> - **Ferrovec Retrace** : a Chromium extension built on ferrovec, [`extensions/retrace`](https://github.com/singhpratech/ferrovec/tree/main/extensions/retrace), now [on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp).
 >
 > `0.5.0` added per-document metadata ([Three-line API](#three-line-api)), the [LangChain.js adapter](#langchainjs) and the [local RAG example](https://github.com/singhpratech/ferrovec/tree/main/examples/ai-sdk-local-rag).
 
@@ -433,7 +433,7 @@ const db = await Ferrovec.open('notes', {
 | **M6** | Cross-tab leader election (Web Locks) | ✅ `0.4.0` |
 | **M7** | Crash-safe storage — checksummed A/B snapshots, write-ahead log, chaos suite | ✅ `0.4.0` |
 | **M8** | Per-document metadata + LangChain.js adapter + local RAG example | ✅ `0.5.0` |
-| **M9** | Offline model loading + compact() + Retrace extension | ✅ `0.6.0` |
+| **M9** | Offline model loading + compact() + Ferrovec Retrace extension | ✅ `0.6.0` |
 
 The pure-Rust HNSW core is published separately on [crates.io](https://crates.io/crates/ferrovec).
 

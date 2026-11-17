@@ -1,9 +1,9 @@
 {
   "name": "retrace-extension",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
-  "description": "Retrace: semantic search over every page you have read, stored only in your browser. A Chrome MV3 extension built on ferrovec.",
+  "description": "Ferrovec Retrace: semantic search over every page you have read, stored only in your browser. A Chrome MV3 extension built on ferrovec.",
   "scripts": {
     "fetch-model": "node tools/fetch-model.ts",
     "build": "tsc --noEmit && vite build && vite build --config vite.content.config.ts && node tools/copy-assets.ts",

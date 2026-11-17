@@ -314,7 +314,7 @@ $<HTMLButtonElement>('forget-hour').addEventListener('click', async () => {
 });
 
 $<HTMLButtonElement>('delete-all').addEventListener('click', async () => {
-  if (!confirm('Delete every page and passage Retrace has stored? This cannot be undone.')) return;
+  if (!confirm('Delete every page and passage Ferrovec Retrace has stored? This cannot be undone.')) return;
   forgetNote.textContent = 'Deleting everything…';
   try {
     reportForget('Deleted everything', await sendToBackground<ForgetResult>({ kind: 'delete-all' }));
