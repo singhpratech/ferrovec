@@ -6,6 +6,8 @@ Semantic search over every page you have read. Stored only in your browser. No a
 
 Retrace is a Chrome (Manifest V3) extension built on [ferrovec](../../README.md). It saves the readable text of the pages you visit, turns it into vectors with a small embedding model that ships inside the extension, and lets you search it by meaning. Search for "that article about why the build got slow" and it finds the page even if those words never appear in it.
 
+<a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp"><img alt="Retrace on the Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/jjniajgebegicfkjhehinaoplanmkfgp?logo=googlechrome&logoColor=white&label=Retrace%20on%20Chrome%20Web%20Store&color=4285F4" /></a>
+
 Status: version 0.1.0, **[on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp)**. You can also load it unpacked (see below).
 
 ## Install
