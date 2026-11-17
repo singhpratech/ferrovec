@@ -20,7 +20,7 @@ Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/
 
 ### Option 2: download the release zip
 
-1. Download `retrace-0.1.0-chromium.zip` from the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0).
+1. Download `ferrovec-retrace-0.1.1-chromium.zip` from the [Ferrovec Retrace 0.1.1 release](https://github.com/singhpratech/ferrovec/releases/tag/retrace-v0.1.1).
 2. Unzip it.
 3. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and choose the unzipped folder. It needs Chrome 116 or newer.
 
