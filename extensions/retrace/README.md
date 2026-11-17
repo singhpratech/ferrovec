@@ -6,19 +6,23 @@ Semantic search over every page you have read. Stored only in your browser. No a
 
 Retrace is a Chrome (Manifest V3) extension built on [ferrovec](../../README.md). It saves the readable text of the pages you visit, turns it into vectors with a small embedding model that ships inside the extension, and lets you search it by meaning. Search for "that article about why the build got slow" and it finds the page even if those words never appear in it.
 
-Status: version 0.1.0. It is **not on the Chrome Web Store yet**. For now you load it unpacked (see below).
+Status: version 0.1.0, **[on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp)**. You can also load it unpacked (see below).
 
 ## Install
 
-Retrace is not published to any store, so you load it yourself. There are two ways.
+There are three ways.
 
-### Option 1: download the release zip
+### Option 1: Chrome Web Store
+
+Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp). It needs Chrome 116 or newer.
+
+### Option 2: download the release zip
 
 1. Download `retrace-0.1.0-chromium.zip` from the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0).
 2. Unzip it.
 3. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and choose the unzipped folder. It needs Chrome 116 or newer.
 
-### Option 2: build from source
+### Option 3: build from source
 
 ```sh
 # 1. build the ferrovec JS package
@@ -122,7 +126,7 @@ One Linux desktop, single-threaded wasm. Your machine will differ.
 - What counts as a close match was measured on 35 real pages ([test/RELEVANCE.md](test/RELEVANCE.md)). On queries written after tuning: 84 % of close matches were the right page, 95 % of right pages were shown as close, and 7 of 10 questions about things not in the index showed nothing close. A question about a topic near something you read (the Sphinx, after reading about the Pyramids) can still show that page as close, and a loosely worded query for one of several similar pages (sibling chapters of a book) may show a sibling, or nothing close, with the page in the weaker list.
 - Only the first 12 passages (about 2,600 words) of a page are indexed.
 - Omnibox suggestions are not covered by the automated test.
-- Not on the Chrome Web Store.
+- On the Chrome Web Store only. Edge, Firefox and Safari have no store listing.
 
 ## Browser support
 

@@ -32,7 +32,7 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 > **New in 0.6.0**
 > - **Offline and extension-ready** : the `transformers` option on `Ferrovec.open` points transformers.js at local model files and a local onnxruntime wasm, so ferrovec runs with no network and inside a Manifest V3 extension; see [Offline model files and `db.compact()`](#offline-model-files-and-dbcompact-since-060).
 > - **`db.compact()`** : removed and replaced documents leave the store's files, not only its results. The on-disk format is unchanged, so `0.6.0` reads and writes the same stores as `0.5.0`.
-> - **Retrace** : a Chromium extension built on ferrovec, [`extensions/retrace`](./extensions/retrace), with a ready-to-load zip on the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0).
+> - **Retrace** : a Chromium extension built on ferrovec, [`extensions/retrace`](./extensions/retrace), now [on the Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp).
 >
 > `0.5.0` added per-document metadata, the [LangChain.js adapter](#langchainjs) and the [local RAG example](./examples/ai-sdk-local-rag).
 
@@ -44,7 +44,7 @@ Most in-browser vector libraries hand you an *in-memory* index: fast to query, b
 
 **[Retrace](./extensions/retrace)** is a Chrome extension that gives you semantic search over every page you have read. Type `rt` and a few words you remember in the address bar, and it finds the page.
 Everything stays in your browser: the text, the vectors and the embedding model are all local, with no account, server or API key. In an automated run, the browser made zero requests initiated by the extension.
-It is version 0.1.0 and loads unpacked for now; a ready-to-load zip, `retrace-0.1.0-chromium.zip`, is attached to the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0). It is not on the Chrome Web Store yet. Read the [Retrace README](./extensions/retrace) for install steps, privacy controls, measured numbers and limits.
+It is version 0.1.0. Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp), or load the zip `retrace-0.1.0-chromium.zip` from the [v0.6.0 release](https://github.com/singhpratech/ferrovec/releases/tag/v0.6.0) unpacked. Read the [Retrace README](./extensions/retrace) for install steps, privacy controls, measured numbers and limits.
 
 Building it needed two library changes, both since `0.6.0`: the [`transformers` option](./js/README.md#offline-local-model-and-wasm-files) and the JS [`db.compact()`](./js/README.md#three-line-api) (documented [below](#offline-model-files-and-dbcompact-since-060)).
 
