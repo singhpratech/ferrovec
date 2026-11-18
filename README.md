@@ -16,6 +16,7 @@
   <a href="https://docs.rs/ferrovec"><img alt="docs.rs" src="https://img.shields.io/docsrs/ferrovec?logo=docsdotrs&label=docs.rs" /></a>
   <a href="https://developer.mozilla.org/en-US/docs/WebAssembly"><img alt="wasm core size" src="https://img.shields.io/badge/wasm%20core-77%20KB%20%7C%2035%20KB%20gzip-5B48D8" /></a>
   <a href="https://chromewebstore.google.com/detail/retrace/jjniajgebegicfkjhehinaoplanmkfgp"><img alt="Ferrovec Retrace on the Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/jjniajgebegicfkjhehinaoplanmkfgp?logo=googlechrome&logoColor=white&label=Ferrovec%20Retrace%20on%20Chrome%20Web%20Store&color=4285F4" /></a>
+  <a href="https://news.ycombinator.com/item?id=50540861"><img alt="Show HN" src="https://img.shields.io/badge/Show%20HN-discussion-FF6600?logo=ycombinator&logoColor=white" /></a>
   <a href="./LICENSE"><img alt="license" src="https://img.shields.io/crates/l/ferrovec" /></a>
 </p>
 
